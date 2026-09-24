@@ -1,0 +1,3 @@
+#!/bin/bash
+# TODO: Placeholder script describing node failure scenario
+# ...

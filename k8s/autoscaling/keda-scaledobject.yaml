@@ -1,0 +1,6 @@
+# TODO: Placeholder ScaledObject for KEDA autoscaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-scaledobject
+# ...

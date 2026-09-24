@@ -1,0 +1,222 @@
+# ==========================================
+# OS / IDE
+# ==========================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Linux
+*~
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+
+
+# ==========================================
+# Node.js
+# ==========================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.npm/
+.yarn/
+.pnpm-store/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Coverage
+coverage/
+.nyc_output/
+
+
+# ==========================================
+# Terraform
+# ==========================================
+
+# Terraform working directory
+**/.terraform/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+**/*.tfstate
+**/*.tfstate.*
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Terraform variable files
+*.tfvars
+*.tfvars.json
+
+# Allow example variables
+!*.tfvars.example
+
+# Terraform plans
+*.tfplan
+*.tfplan.*
+
+# Terraform lock file
+# KEEP THIS FILE IN GIT
+# .terraform.lock.hcl
+
+
+# ==========================================
+# AWS
+# ==========================================
+
+# AWS CLI credentials/config
+.aws/
+
+# AWS SAM
+.aws-sam/
+
+# CDK
+.cdk.out/
+
+# Local AWS config
+credentials
+
+
+# ==========================================
+# Kubernetes
+# ==========================================
+
+# Local Kubernetes config
+.kube/
+
+# Do NOT ignore YAML manifests
+# k8s/**/*.yaml should remain tracked
+
+# Local generated Kubernetes files
+k8s/**/*.local.yaml
+k8s/**/*.local.yml
+
+# Secret files
+k8s/**/secret.yaml
+k8s/**/secrets.yaml
+
+# Keep examples
+!k8s/**/secret.example.yaml
+
+
+# ==========================================
+# Logs
+# ==========================================
+
+*.log
+logs/
+log/
+
+
+# ==========================================
+# Build / Temporary files
+# ==========================================
+
+dist/
+build/
+tmp/
+temp/
+.cache/
+
+*.tmp
+*.temp
+*.swp
+*.swo
+
+
+# ==========================================
+# Test / Generated files
+# ==========================================
+
+test-results/
+playwright-report/
+.nyc_output/
+
+
+# ==========================================
+# Docker
+# ==========================================
+
+# Docker local override
+docker-compose.override.yml
+
+# Docker environment
+docker.env
+
+
+# ==========================================
+# Project generated evidence
+# ==========================================
+
+# Ignore generated experiment outputs
+docs/evidence/*
+!docs/evidence/.gitkeep
+
+# Generated reports
+reports/
+*.csv
+*.json
+
+# But keep specific project configuration JSON if needed
+!package-lock.json
+
+
+# ==========================================
+# Secrets / Credentials
+# ==========================================
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+credentials.json
+service-account.json
+secrets.json
+
+# SSH
+id_rsa
+id_rsa.pub
+
+
+# ==========================================
+# Python
+# ==========================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+
+# ==========================================
+# Misc
+# ==========================================
+
+*.bak
+*.backup
+*.old

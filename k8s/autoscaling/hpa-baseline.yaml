@@ -1,0 +1,6 @@
+# TODO: Placeholder HPA for baseline autoscaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+# ...

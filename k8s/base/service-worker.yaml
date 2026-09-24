@@ -1,0 +1,12 @@
+# TODO: Placeholder Service for Worker Service (if needed for metrics scraping)
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-service
+spec:
+  selector:
+    app: worker-service
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

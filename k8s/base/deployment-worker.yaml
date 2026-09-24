@@ -1,0 +1,6 @@
+# TODO: Placeholder Deployment for Worker Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-service
+# ...

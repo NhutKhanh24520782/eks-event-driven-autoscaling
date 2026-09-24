@@ -1,0 +1,8 @@
+# TODO: Placeholder ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  QUEUE_NAME: "worker-queue"
+  AWS_REGION: "us-west-2"

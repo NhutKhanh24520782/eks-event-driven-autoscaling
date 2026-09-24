@@ -1,0 +1,15 @@
+# TODO: Placeholder GitHub Actions workflow
+# Steps:
+# 1. deploy
+# 2. load test
+# 3. inject failure
+# 4. collect metrics
+# 5. report
+name: Chaos Pipeline
+on: [push]
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: TODO deploy
+        run: echo "deploy"

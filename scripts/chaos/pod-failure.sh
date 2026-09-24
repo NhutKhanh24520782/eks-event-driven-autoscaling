@@ -1,0 +1,3 @@
+#!/bin/bash
+# TODO: Placeholder script describing pod failure scenario
+# ...
