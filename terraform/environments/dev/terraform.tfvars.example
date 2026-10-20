@@ -1,2 +1,0 @@
-# TODO: Provide example values for variables in dev environment
-vpc_cidr = "10.0.0.0/16"
