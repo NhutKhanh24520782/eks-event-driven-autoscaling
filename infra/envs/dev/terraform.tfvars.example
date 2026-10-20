@@ -1,0 +1,56 @@
+# ============================================================
+# terraform.tfvars.example
+# Copy file này thành terraform.tfvars và điền giá trị thực
+# KHÔNG commit terraform.tfvars vào git (đã có trong .gitignore)
+# ============================================================
+
+region       = "ap-southeast-1"
+cluster_name = "multiaz-eks"
+
+# Phiên bản Kubernetes – kiểm tra phiên bản được EKS hỗ trợ:
+# https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html
+kubernetes_version = "1.30"
+
+# 2 AZ đầu của ap-southeast-1
+azs = ["ap-southeast-1a", "ap-southeast-1b"]
+
+# Giới hạn IP được gọi Kubernetes API – nên thay bằng IP thực của nhóm
+# Lấy IP: curl -s https://checkip.amazonaws.com
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
+
+# ARN IAM user/role của 3 thành viên nhóm
+# Lấy bằng: aws sts get-caller-identity --query Arn --output text
+admin_principal_arns = [
+  # "arn:aws:iam::123456789012:user/member1",
+  # "arn:aws:iam::123456789012:user/member2",
+  # "arn:aws:iam::123456789012:user/member3",
+]
+
+# Instance type – t3.medium cân bằng giữa chi phí và hiệu năng cho đồ án
+instance_types    = ["t3.medium"]
+capacity_type     = "ON_DEMAND"
+node_min_size     = 2
+node_desired_size = 2
+node_max_size     = 4
+
+# SQS
+sqs_queue_name         = "jobs-queue"
+sqs_visibility_timeout = 60
+sqs_receive_wait_time  = 20
+
+# KEDA – tắt ở Phase 1 và 2, bật ở Phase 3
+install_keda      = false
+keda_chart_version = "2.15.1"
+
+# ALB Controller chart version
+alb_controller_version = "1.8.3"
+
+# ECR
+ecr_name_prefix = "multiaz-autoscaling"
+
+# Budget – QUAN TRỌNG: điền email thực để nhận cảnh báo chi phí
+monthly_budget_usd = "50"
+alert_emails = [
+  # "member1@example.com",
+  # "member2@example.com",
+]
