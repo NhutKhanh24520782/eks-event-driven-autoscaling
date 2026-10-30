@@ -1,0 +1,49 @@
+services:
+  # ElasticMQ emulates AWS SQS locally: 100% free, no license token, instant startup
+  sqs:
+    image: softwaremill/elasticmq-native:latest
+    container_name: sqs-mock
+    ports:
+      - "9324:9324"
+    volumes:
+      - ./scripts/local/elasticmq.conf:/opt/docker/conf/elasticmq.conf:ro
+
+  # API Service (Phat - Backend)
+  # Host port mapped to 3000 (Windows reserves 8000-8100)
+  api-service:
+    build:
+      context: ./apps/api-service
+      dockerfile: Dockerfile
+    container_name: api-service
+    ports:
+      - "3000:8080"
+    environment:
+      - PORT=8080
+      - AWS_REGION=ap-southeast-1
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+      - AWS_ENDPOINT_URL=http://sqs:9324
+      - QUEUE_URL=http://sqs:9324/000000000000/jobs-queue
+    depends_on:
+      - sqs
+
+  # Worker Service (Phat - Backend)
+  # Host port mapped to 3001 (Windows reserves 8000-8100)
+  worker-service:
+    build:
+      context: ./apps/worker-service
+      dockerfile: Dockerfile
+    container_name: worker-service
+    ports:
+      - "3001:8081"
+    environment:
+      - AWS_REGION=ap-southeast-1
+      - AWS_ACCESS_KEY_ID=dummy
+      - AWS_SECRET_ACCESS_KEY=dummy
+      - AWS_ENDPOINT_URL=http://sqs:9324
+      - QUEUE_URL=http://sqs:9324/000000000000/jobs-queue
+      - HEALTH_PORT=8081
+      - WAIT_TIME_SECONDS=5
+      - WORKER_PROCESS_TIME_MS=1000
+    depends_on:
+      - sqs
