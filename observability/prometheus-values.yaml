@@ -1,0 +1,8 @@
+# observability/prometheus-values.yaml
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false 
+    podMonitorSelectorNilUsesHelmValues: false
+grafana:
+  enabled: true
+  adminPassword: "" 
