@@ -1,141 +1,75 @@
-# Worker Service — Background Worker Service
+# Worker Service
 
-**Phân công thực hiện:** Phát (Backend Engineer)  
-**Chức năng chính:** Poll jobs từ AWS SQS (`jobs-queue`), xử lý idempotent, ghi log chi tiết, xử lý retry/redelivery và graceful shutdown khi scale-down.
+The worker long-polls SQS, processes each message, and deletes successful
+messages. Failed jobs are left on the queue for redelivery and eventual
+dead-letter routing according to the SQS redrive policy. In EKS it must run as
+the `worker` service account with the dedicated queue-scoped IRSA role.
 
----
+## Processing behavior
 
-## 1. Cơ chế hoạt động & Tính năng kỹ thuật
+- Uses SQS long polling (`WAIT_TIME_SECONDS`, default 20) and receives up to
+  `MAX_MESSAGES` (default 5) messages concurrently.
+- Uses `job_id`/`jobId`, falling back to the SQS message ID, for an in-memory
+  deduplication cache. The default cache TTL is 10 minutes; it is local to one
+  process and does not survive restarts.
+- Simulates job work with a timer. The default duration is 1000 ms; this is
+  predominantly waiting and is not a CPU workload suitable for demonstrating
+  CPU-based HPA scaling.
+- On `shouldFail: true`, records a failure and leaves the message for SQS
+  redelivery. Queue redrive policy moves messages to the DLQ after the
+  configured receive limit.
+- On shutdown, stops polling and waits for active jobs for up to 25 seconds.
 
-### 1.1 Long Polling SQS
-- Sử dụng `ReceiveMessageCommand` với `WaitTimeSeconds = 20s` để giảm số lượng request rỗng và tiết kiệm chi phí AWS SQS.
-- Batch size nhận tối đa 5-10 messages mỗi lần poll để tối ưu throughput.
+## HTTP endpoints
 
-### 1.2 Xử lý trùng lặp (Idempotent Processing)
-- AWS SQS cam kết chuẩn **at-least-once delivery**, do đó message có thể bị gửi lặp lại trong trường hợp lỗi mạng hoặc timeout.
-- Worker tích hợp bộ nhớ cache **In-Memory Idempotency Cache với TTL (Time-To-Live = 10 phút)**:
-  - Khi nhận message, kiểm tra `job_id` trong cache.
-  - Nếu đã xử lý thành công trước đó: ghi log cảnh báo `[IDEMPOTENT SKIP]`, thực hiện xóa message khỏi SQS (`DeleteMessageCommand`) ngay lập tức để tránh lặp vô tận, và không xử lý lại.
-  - Sau khi hoàn thành một job mới: ghi nhận `job_id` vào cache cùng timestamp hiện tại.
-  - Tự động dọn dẹp các bản ghi quá hạn TTL theo chu kỳ 60s để tránh memory leak.
+The server listens on port 8081 by default:
 
-### 1.3 Retry & Redelivery
-- Đọc thuộc tính hệ thống `ApproximateReceiveCount` từ SQS.
-- Nếu `ApproximateReceiveCount > 1`: cảnh báo message đang được giao lại (redelivery do worker trước đó bị crash hoặc timeout).
-- Nếu việc xử lý job thất bại (ném exception):
-  - Worker **KHÔNG xóa message** khỏi SQS.
-  - Message sẽ tự động quay trở lại hàng đợi sau khi hết `VisibilityTimeout`.
-  - Nếu số lần thất bại vượt quá `maxReceiveCount` (được cấu hình trong SQS Redrive Policy), AWS SQS sẽ tự động chuyển message sang Dead Letter Queue (`jobs-queue-dlq`).
+- `GET /health` and `/healthz`: process health and local counters.
+- `GET /metrics`: Prometheus text exposition:
+  `worker_in_flight_jobs`, `worker_jobs_processed_total`,
+  `worker_jobs_duplicate_total`, and `worker_jobs_error_total`.
 
-### 1.4 Tắt ứng dụng an toàn (Graceful Shutdown)
-- Worker theo dõi số lượng job đang được xử lý (`inFlightJobs`).
-- Khi Kubernetes gửi tín hiệu `SIGTERM` (scale-down hoặc pod eviction):
-  1. Đặt cờ `isShuttingDown = true` để vòng lặp polling **ngưng nhận message mới** từ SQS.
-  2. Đóng cổng HTTP `/health` để Kubernetes báo Pod Unhealthy.
-  3. Chờ toàn bộ các job đang xử lý dở (`inFlightJobs === 0`) hoàn thành sạch sẽ và xóa khỏi SQS.
-  4. Nếu quá thời gian an toàn (25s), tiến hành force exit để tránh bị Kubernetes SIGKILL đột ngột.
+Metrics are process-local. Counters reset on pod restart. Short jobs may not
+be visible in the in-flight gauge at a 30-second Prometheus scrape interval.
 
-### 1.5 Health Check & Metrics Server
-- Mở server HTTP nhẹ tại port `8081`:
-  - `GET /health` hoặc `GET /healthz`: Trả về trạng thái worker, số job đang xử lý, tổng số job thành công, trùng lặp và lỗi.
-  - `GET /metrics`: Trả về định dạng Prometheus text format để hệ thống giám sát cào dữ liệu (scrape).
+## Configuration
 
----
+| Variable | Default | Description |
+| --- | --- | --- |
+| `AWS_REGION` | `ap-southeast-1` | SQS region |
+| `QUEUE_URL` | Required | Main queue URL |
+| `AWS_ENDPOINT_URL` | unset | SQS-compatible local endpoint |
+| `HEALTH_PORT` | `8081` | Health and metrics HTTP port |
+| `WORKER_PROCESS_TIME_MS` | `1000` | Default simulated job duration |
+| `WAIT_TIME_SECONDS` | `20` | SQS long-poll duration |
+| `MAX_MESSAGES` | `5` | Receive batch size (SQS maximum is 10) |
+| `DEDUPLICATION_TTL_MS` | `600000` | Local cache TTL |
 
-## 2. Biến môi trường (Environment Variables)
+## Run and build
 
-| Tên biến | Mặc định | Mô tả |
-| :--- | :--- | :--- |
-| `AWS_REGION` | `ap-southeast-1` | AWS Region chứa SQS |
-| `QUEUE_URL` | *(Bắt buộc)* | URL đầy đủ của SQS Queue |
-| `AWS_ENDPOINT_URL` | *(Trống)* | URL LocalStack khi test local |
-| `HEALTH_PORT` | `8081` | Port HTTP của Health check / Metrics |
-| `WORKER_PROCESS_TIME_MS` | `1000` | Thời gian giả lập xử lý mỗi job (ms) |
-| `WAIT_TIME_SECONDS` | `20` | Thời gian chờ Long Polling SQS (giây) |
-| `MAX_MESSAGES` | `5` | Số lượng message tối đa nhận mỗi batch (1-10) |
-| `DEDUPLICATION_TTL_MS` | `600000` | Thời gian lưu cache phát hiện trùng lặp (10 phút) |
-
----
-
-## 3. Quyền hạn AWS IAM (SQS Permissions)
-
-Worker Service sử dụng IAM Roles for Service Accounts (IRSA).  
-Quyền tối thiểu cần cấp cho Worker Service:
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "sqs:ReceiveMessage",
-    "sqs:DeleteMessage",
-    "sqs:GetQueueAttributes"
-  ],
-  "Resource": "arn:aws:sqs:ap-southeast-1:<ACCOUNT_ID>:jobs-queue"
-}
+```powershell
+cd apps\worker-service
+npm install
+npm start
 ```
 
----
+Build from the repository root:
 
-## 4. Hướng dẫn chạy và kiểm thử
+```powershell
+docker build -t worker-service:dev -f apps\worker-service\Dockerfile apps\worker-service
+```
 
-### 4.1 Chạy trực tiếp với Node.js (Local)
+In EKS, verify the pod uses the `worker` service account and that
+`AWS_ROLE_ARN` points to the worker IRSA role. Do not add queue permissions to
+the node-group role as a substitute.
 
-1. Cài đặt dependencies:
-   ```bash
-   cd apps/worker-service
-   npm install
-   ```
+## Current limitations / next steps
 
-2. Tạo file `.env`:
-   ```env
-   AWS_REGION=ap-southeast-1
-   QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/123456789012/jobs-queue
-   HEALTH_PORT=8081
-   WORKER_PROCESS_TIME_MS=1000
-   ```
-
-3. Khởi chạy:
-   ```bash
-   npm start
-   ```
-
-### 4.2 Chạy bằng Docker
-
-1. Build Docker image:
-   ```bash
-   docker build -t worker-service:latest -f apps/worker-service/Dockerfile apps/worker-service
-   ```
-
-2. Chạy container:
-   ```bash
-   docker run -d --name worker-service \
-     -p 8081:8081 \
-     -e AWS_REGION=ap-southeast-1 \
-     -e QUEUE_URL=https://sqs.ap-southeast-1.amazonaws.com/123456789012/jobs-queue \
-     worker-service:latest
-   ```
-
-### 4.3 Kiểm tra Worker Health & Metrics
-
-- **Kiểm tra Health:**
-  ```bash
-  curl http://localhost:8081/health
-  ```
-  *Ví dụ kết quả:*
-  ```json
-  {
-    "status": "healthy",
-    "service": "worker-service",
-    "worker_id": "ip-10-0-1-55.ap-southeast-1.compute.internal-1",
-    "in_flight_jobs": 0,
-    "total_received": 42,
-    "total_processed": 42,
-    "total_duplicates": 0,
-    "total_errors": 0,
-    "uptime_seconds": 320
-  }
-  ```
-
-- **Kiểm tra Prometheus Metrics:**
-  ```bash
-  curl http://localhost:8081/metrics
-  ```
+- In-memory idempotency is not durable or shared between replicas.
+- There is no heartbeat/change-visibility extension for jobs that outlast the
+  SQS visibility timeout.
+- Validate malformed payloads and processing-time ranges with a documented
+  poison-message policy.
+- Add a processing-duration histogram, receive/retry counters, and explicit
+  termination tests.
+- Add a bounded CPU-intensive test mode if comparing against CPU HPA.

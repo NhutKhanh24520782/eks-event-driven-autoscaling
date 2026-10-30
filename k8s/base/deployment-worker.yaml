@@ -1,6 +1,69 @@
-# TODO: Placeholder Deployment for Worker Service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: worker-service
-# ...
+  labels:
+    app: worker-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-service
+  template:
+    metadata:
+      labels:
+        app: worker-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8081"
+    spec:
+      serviceAccountName: worker
+      terminationGracePeriodSeconds: 55
+      containers:
+        - name: worker
+          image: 274118253913.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/worker:latest
+          imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: HEALTH_PORT
+              value: "8081"
+            - name: WAIT_TIME_SECONDS
+              value: "20"
+          envFrom:
+            - configMapRef:
+                name: app-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
