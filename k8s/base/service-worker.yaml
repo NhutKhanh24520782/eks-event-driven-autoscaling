@@ -1,12 +1,15 @@
-# TODO: Placeholder Service for Worker Service (if needed for metrics scraping)
 apiVersion: v1
 kind: Service
 metadata:
   name: worker-service
+  labels:
+    app: worker-service
 spec:
+  type: ClusterIP
   selector:
     app: worker-service
   ports:
-    - protocol: TCP
-      port: 8080
-      targetPort: 8080
+    - name: metrics
+      protocol: TCP
+      port: 8081
+      targetPort: metrics

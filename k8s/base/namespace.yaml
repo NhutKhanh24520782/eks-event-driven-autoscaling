@@ -1,5 +1,6 @@
-# TODO: Placeholder Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: distributed-system
+  name: app
+  labels:
+    app.kubernetes.io/part-of: eks-event-driven-autoscaling
