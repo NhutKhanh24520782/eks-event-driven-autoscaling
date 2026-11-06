@@ -181,6 +181,7 @@ reports/
 # But keep specific project configuration JSON if needed
 !package.json
 !package-lock.json
+!worker-monitoring.json
 
 
 # ==========================================
