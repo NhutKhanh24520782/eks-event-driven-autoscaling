@@ -1,15 +1,28 @@
-# TODO: Placeholder TopologySpreadConstraints
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: topology-spread-example
+  name: api-service
 spec:
   template:
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: DoNotSchedule
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: api-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-service
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
               app: worker-service
