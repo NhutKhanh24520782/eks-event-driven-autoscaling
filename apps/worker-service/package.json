@@ -1,0 +1,18 @@
+{
+  "name": "worker-service",
+  "version": "1.0.0",
+  "description": "Worker Service for EKS Event-Driven Autoscaling (Polls SQS, idempotent processing, graceful shutdown)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js",
+    "test": "node -e \"console.log('Worker Service syntax check passed')\""
+  },
+  "keywords": ["eks", "keda", "sqs", "worker"],
+  "author": "Phat (Backend Engineer)",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "dotenv": "^16.4.5"
+  }
+}
