@@ -5,6 +5,7 @@ metadata:
   namespace: observability
   labels:
     app.kubernetes.io/name: api-service
+    release: monitoring
 spec:
   namespaceSelector:
     matchNames:

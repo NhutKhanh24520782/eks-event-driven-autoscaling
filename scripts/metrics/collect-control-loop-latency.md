@@ -1,143 +1,132 @@
 # Collecting Control-Loop Latency
 
-This runbook collects evidence for T0–T6 as defined in
-[`docs/control-loop-latency.md`](../../docs/control-loop-latency.md). Run it
-only in a development EKS environment. Local Docker Compose tests API-to-worker
-delivery but has no KEDA control loop.
+The method and event definitions are in
+[`docs/control-loop-latency.md`](../../docs/control-loop-latency.md). The
+collector is read-only: it does not submit jobs, patch resources, or change
+KEDA settings. Run the k6 workload separately.
 
-## Prerequisites
+## Prerequisites and preflight
 
-- `kubectl`, `k6`, and Bash (Git Bash/WSL is suitable for the shell examples).
-- Access to the intended EKS context and read access to `app` and `keda`.
-- A Ready `worker-scaledobject` targeting the same dev SQS queue as the API.
-- Synchronized UTC clocks. Record the local machine's time source/offset if
-  using client timestamps.
-- A quiet queue and no concurrent load generators.
-
-Confirm the target before collecting:
+Install `kubectl`, AWS CLI v2, Python 3, k6, and Bash (Git Bash/WSL is
+suitable). Confirm AWS credentials, the exact active EKS context, the dev SQS
+queue, and the ScaledObject target. Run only on a quiet development queue.
 
 ```bash
 kubectl config current-context
 kubectl get scaledobject,hpa -n app
 kubectl describe scaledobject worker-scaledobject -n app
 kubectl get pods -n app -o wide
-kubectl get nodes -L topology.kubernetes.io/zone
+aws sqs get-queue-attributes --queue-url "$QUEUE_URL" --region "$AWS_REGION" \
+  --attribute-names VisibilityTimeout ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible
 ```
 
-Check that the ScaledObject is Ready and its queue URL, region, trigger
-threshold, minimum/maximum replicas, polling interval, and cooldown match the
-test plan. Do not proceed if the current context or queue is uncertain.
+Do not proceed if the context/queue is uncertain, the ScaledObject is not
+Ready, unrelated traffic is present, or queue depth is not understood.
 
 ## Start collectors
 
-From the repository root, create a unique run directory. Keep the ID the same
-for k6, logs, and the run manifest:
+From the repository root, set a unique run ID and start the collector in one
+terminal:
 
 ```bash
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="docs/evidence/$RUN_ID"
-mkdir -p "$OUT"
-printf 'run_id=%s\nstarted_at=%s\ncontext=%s\n' \
-  "$RUN_ID" "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
-  "$(kubectl config current-context)" > "$OUT/run.txt"
+export KUBE_CONTEXT="$(kubectl config current-context)"
+export QUEUE_URL="<DEV-TEST-QUEUE-URL>"
+export AWS_REGION="ap-southeast-1"
+export RUN_ID="load-$(date -u +%Y%m%dT%H%M%SZ)"
+bash scripts/metrics/collect-control-loop-latency.sh
 ```
 
-In a collector terminal, save timestamped application and KEDA logs:
+The script requires its context to match the currently active context. It
+captures timestamped API, worker, and KEDA logs; one-second desired/ready
+replica samples; five-second SQS visible/in-flight/delayed samples; initial
+and final autoscaler/Pod snapshots; events; and a run manifest. It creates
+`docs/evidence/$RUN_ID/` by default. It runs until Ctrl+C; interrupt it only
+after the workload finishes and the queue drains.
 
-```bash
-# In each terminal, set the same run ID created above.
-RUN_ID='<run-id>'
-OUT="docs/evidence/$RUN_ID"
-mkdir -p "$OUT"
+The run collector writes `run-events.csv` with a header. If KEDA logs or an
+approved sampled KEDA metric provide the first qualifying scale observation,
+record one row such as:
 
-kubectl logs -n app -l app=api-service --all-containers=true \
-  --prefix --timestamps --since=2m -f > "$OUT/api.log" 2>&1
+```csv
+T2,2026-01-02T03:04:05.000Z,keda operator log,15000
 ```
 
-Run the API, worker, and KEDA log collectors in separate terminals. For the
-worker and KEDA operator use:
+Use the actual timestamp, source, and observation uncertainty. Default KEDA
+logs may not expose every poll. Leave T2 blank when it is not directly
+observable; do not infer it from T3.
+
+## Run a profile in another terminal
+
+Use the same run ID and the exact dev ALB host. All script settings are passed
+with k6 `-e` options so they are available through `__ENV`:
 
 ```bash
-kubectl logs -n app -l app=worker-service --all-containers=true \
-  --prefix --timestamps --since=2m -f > "$OUT/worker.log" 2>&1
-kubectl logs -n keda deployment/keda-operator \
-  --timestamps --since=2m -f > "$OUT/keda-operator.log" 2>&1
-```
-
-The log commands follow until interrupted with Ctrl+C. KEDA's default log
-level may not emit each polling observation. Do not change a shared cluster's
-operator log level for this test; if T2 is not logged, mark it unavailable or
-use a separately approved dev-only metrics collection method.
-
-In another terminal, sample desired/ready replicas once per second. These are
-client observation times; state that resolution in the results:
-
-```bash
-RUN_ID='<run-id>'
-OUT="docs/evidence/$RUN_ID"
-mkdir -p "$OUT"
-while true; do
-  printf '%s\t' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
-  kubectl get deployment worker-service -n app \
-    -o jsonpath='desired={.spec.replicas} ready={.status.readyReplicas}{"\n"}'
-  sleep 1
-done > "$OUT/replicas.tsv" 2>&1
-```
-
-Capture a pre-test baseline for queue depth (CloudWatch/SQS metrics), worker
-replicas, Pod placement, and `worker_jobs_processed_total`. The current worker
-does not export queue depth or KEDA event timestamps as Prometheus metrics.
-
-## Run the workload and save CSV
-
-The k6 script uses the API response time as the `enqueue_ack_ms` trend and
-tags samples with `run_id`. Each request has a unique job ID containing that
-run ID and includes `client_sent_at`; API and worker logs correlate the ID.
-
-```bash
-RUN_ID='<run-id>'
-OUT="docs/evidence/$RUN_ID"
-mkdir -p "$OUT"
-API_URL="https://<DEV-ALB-HOSTNAME>"
 k6 run \
-  -e API_URL="$API_URL" \
+  -e API_URL="http://<DEV-ALB-HOSTNAME>" \
   -e RUN_ID="$RUN_ID" \
-  --out "csv=$OUT/k6.csv" \
+  -e K6_PROFILE=baseline \
+  -e BASELINE_VUS=1 \
+  -e BASELINE_DURATION=30s \
+  -e PROCESS_TIME_MS=1000 \
+  --out "csv=docs/evidence/$RUN_ID/k6.csv" \
   scripts/load-test/k6-workload.js
 ```
 
-For local Compose only, use `API_URL=http://localhost:3000`; this does not
-produce KEDA measurements. The default k6 profile ramps to 50 VUs and may
-create a backlog. Use only a dev queue, confirm cost/limits, and stop the test
-if errors, queue age, or resource usage exceed the agreed bounds.
-
-While the test runs, record the first qualifying KEDA observation (T2), the
-first increase in desired replicas (T3), and any HPA/ScaledObject events. After
-the run, capture Pod creation timestamps and Ready transition timestamps:
+After the baseline drains, run the bounded load profile with a **new** run ID,
+not concurrently:
 
 ```bash
-kubectl get pods -n app -l app=worker-service -o json \
-  > "$OUT/worker-pods.json"
-kubectl get events -n app --sort-by=.metadata.creationTimestamp \
-  > "$OUT/app-events.txt"
-kubectl get hpa,scaledobject -n app -o yaml \
-  > "$OUT/autoscaler-final.yaml"
-kubectl get pods -n app -o wide > "$OUT/pods-final.txt"
+RUN_ID="load-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "docs/evidence/$RUN_ID"
+k6 run \
+  -e API_URL="http://<DEV-ALB-HOSTNAME>" \
+  -e RUN_ID="$RUN_ID" \
+  -e K6_PROFILE=load \
+  -e PEAK_VUS=10 \
+  -e RAMP_UP_DURATION=30s \
+  -e HOLD_DURATION=60s \
+  -e RAMP_DOWN_DURATION=30s \
+  -e PROCESS_TIME_MS=1000 \
+  --out "csv=docs/evidence/$RUN_ID/k6.csv" \
+  scripts/load-test/k6-workload.js
 ```
 
-Correlate the k6 job IDs with API `[SQS SENT]` records and worker
-`[JOB START]`, `[REDELIVERY]`, and `[JOB SUCCESS]` records. For each job,
-record T0–T6, source, UTC timestamp, observer resolution, and whether it is
-measured, estimated, or unavailable. Calculate intervals using the formulas
-in the methodology document; do not infer T2 from a replica change.
+The profile defaults and caps are documented in
+[`scripts/load-test/README.md`](../load-test/README.md). HTTP 202 is enqueue
+acceptance, not processing success.
 
-## Close out and report
+## Analyze and capture dashboard evidence
 
-- Stop all log and replica collectors with Ctrl+C.
-- Record the queue depth, desired/ready replicas, and any remaining backlog.
-- Confirm accepted jobs eventually reached success or document why not.
-- Report run ID, test settings, sample/missing counts, p50/p90/p95, and
-  measurement limitations.
-- CSV files under `docs/evidence/` are not ignored by Git. Review them and
-  remove any sensitive data before committing; other raw logs may remain local
-  unless explicitly selected as sanitized evidence.
+After Ctrl+C stops the collector, derive job- and run-level CSVs:
+
+```bash
+python scripts/metrics/analyze-control-loop-latency.py "docs/evidence/$RUN_ID"
+```
+
+The analyzer correlates API `api_received_at`/`enqueued_at` and worker
+`completed_at`/`duration_ms` fields by `job_id`. It computes job API-to-SQS,
+successful worker processing, and end-to-end intervals; T3 from the first
+sampled desired-replica increase; and T4/T5 from new worker Pod creation and
+Ready timestamps. It reports missing marks. Review Pod events and the run
+timeline to ensure the selected new Pod belongs to this experiment.
+
+Before sharing, save a Grafana screenshot next to the CSVs and add a short
+`summary.md` with the run settings, queue and replica outcomes, percentiles,
+missing events, and measurement limitations. Use the `Worker SQS Autoscaling`
+dashboard (import
+[`worker-monitoring.json`](../../observability/grafana/dashboards/worker-monitoring.json)).
+To open Grafana locally:
+
+```bash
+kubectl port-forward -n observability service/monitoring-grafana 3000:80
+```
+
+Prometheus queue gauges are approximate SQS attributes sampled at scrape
+interval. Replica samples have one-second observation resolution. Pod
+creation/Ready and application timestamps are sourced from different clocks;
+report clock uncertainty and do not claim finer precision than the source.
+KEDA T2 and job-level worker start-to-ready are unavailable unless directly
+captured. The collector does not infer a bottleneck or a KEDA-only latency.
+
+Evidence can contain cluster names, queue/account IDs, IPs, and endpoints.
+Sanitize any files before sharing or committing them.

@@ -74,7 +74,8 @@ const metrics = {
   startTime: new Date().toISOString()
 };
 const processingDurationBucketBounds = Object.keys(metrics.processingDurationSecondsBuckets)
-  .map(Number);
+  .map(Number)
+  .sort((left, right) => left - right);
 
 function observeProcessingDuration(durationSeconds) {
   metrics.processingDurationSecondsCount++;

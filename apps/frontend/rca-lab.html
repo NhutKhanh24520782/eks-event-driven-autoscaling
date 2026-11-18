@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rca-lab — Failure Scenarios</title>
+  <title>rca-lab — Multi-AZ Autoscaling & Failure Scenarios</title>
   
   <!-- Inter font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,6 +19,7 @@
         extend: {
           fontFamily: {
             sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', 'monospace'],
           },
           colors: {
             appBg: '#f0f3f8',
@@ -45,20 +46,19 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Table custom grid proportions matching reference image */
     .scenario-grid {
       display: grid;
-      grid-template-columns: 1fr 140px 140px 120px;
+      grid-template-columns: 1fr 130px 180px 110px;
       align-items: center;
     }
 
-    @media (max-width: 768px) {
+    @media (max-width: 860px) {
       .scenario-grid {
-        grid-template-columns: 1fr 90px 90px 90px;
+        grid-template-columns: 1fr;
+        gap: 12px;
       }
     }
 
-    /* Start button styling matching reference */
     .btn-start {
       background-color: #10b981;
       color: #ffffff;
@@ -71,7 +71,6 @@
       transform: scale(0.97);
     }
 
-    /* Stop button styling */
     .btn-stop {
       background-color: #334155;
       color: #ffffff;
@@ -80,13 +79,13 @@
     .btn-stop:hover {
       background-color: #1e293b;
     }
+
     .btn-disabled {
-      background-color: #cbd5e1;
-      color: #475569;
+      background-color: #e2e8f0;
+      color: #94a3b8;
       cursor: not-allowed;
     }
 
-    /* Pulse animation for running state */
     .running-dot {
       box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
       animation: pulse 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
@@ -96,46 +95,311 @@
         box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
       }
     }
+
+    .step-pill {
+      transition: all 0.2s ease;
+    }
+    .step-pill:hover {
+      transform: translateY(-2px);
+    }
   </style>
 </head>
 <body class="min-h-screen bg-[#f0f3f8] text-[#1e293b]">
 
   <!-- Top Navbar Header -->
-  <header class="bg-white border-b border-[#e4e8ee] px-6 lg:px-12 py-3.5 flex items-center justify-between">
-    <div class="flex items-center space-x-2">
-      <span class="text-[17px] font-bold tracking-tight text-black">rca-lab</span>
-      <span class="text-slate-400 font-normal text-sm select-none">—</span>
-      <span class="text-[14px] text-[#64748b] font-normal">Failure Scenarios</span>
+  <header class="bg-white border-b border-[#e4e8ee] px-6 lg:px-12 py-3.5 flex items-center justify-between sticky top-0 z-40 shadow-sm">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <span class="text-[17px] font-bold tracking-tight text-slate-900">rca-lab</span>
+        <span class="text-slate-300 font-normal text-sm select-none">—</span>
+        <span class="text-[13px] text-[#64748b] font-medium hidden sm:inline">Multi-AZ EKS Autoscaling & Resilience Testbed</span>
+      </div>
+      <span id="env-badge" class="px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-slate-100 text-slate-600">
+        CONNECTING...
+      </span>
     </div>
 
     <div class="flex items-center space-x-4">
-      <span class="text-xs text-[#8a99ad]">
-        updated <span id="clock" class="text-[#64748b]">5:22:25 PM</span>
+      <a href="http://localhost:3000" target="_blank" rel="noreferrer"
+        class="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1 rounded border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+        <span>📊 Grafana</span>
+      </a>
+      <span class="text-xs text-[#8a99ad] font-mono">
+        <span id="clock" class="text-[#64748b]">--:--:--</span>
       </span>
       <button 
         onclick="resetAll()" 
-        class="border border-[#f87171] hover:bg-[#fef2f2] text-[#ef4444] hover:text-[#dc2626] text-xs font-normal px-3 py-1 rounded transition-colors duration-150">
+        class="border border-[#f87171] hover:bg-[#fef2f2] text-[#ef4444] hover:text-[#dc2626] text-xs font-medium px-3 py-1 rounded transition-colors duration-150">
         Reset all
       </button>
     </div>
   </header>
 
   <!-- Main Content Layout -->
-  <main class="max-w-[1400px] mx-auto px-6 lg:px-12 py-7">
+  <main class="max-w-[1400px] mx-auto px-6 lg:px-12 py-6">
 
-    <div id="environment-banner" class="mb-5 rounded border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
-      Connecting to the local scenario controller...
+    <!-- Environment Notice Banner -->
+    <div id="environment-banner" class="mb-5 rounded border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex items-center justify-between">
+      <span>Connecting to the scenario controller and SQS backend...</span>
     </div>
+
+    <!-- Live Telemetry & Control Loop Gauges -->
+    <section class="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">SQS Backlog</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-visible" class="text-xl font-bold font-mono text-indigo-600">--</span>
+          <span class="text-[10px] text-slate-400">visible</span>
+        </div>
+      </div>
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">In-Flight Jobs</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-inflight" class="text-xl font-bold font-mono text-cyan-600">--</span>
+          <span class="text-[10px] text-slate-400">polled</span>
+        </div>
+      </div>
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">Worker Replicas</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-replicas" class="text-xl font-bold font-mono text-emerald-600">--</span>
+          <span class="text-[10px] text-slate-400">Ready / Spec</span>
+        </div>
+      </div>
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">Jobs Accepted</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-accepted" class="text-xl font-bold font-mono text-slate-800">--</span>
+          <span class="text-[10px] text-slate-400">HTTP 202</span>
+        </div>
+      </div>
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">Deduplicated</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-duplicates" class="text-xl font-bold font-mono text-amber-600">--</span>
+          <span class="text-[10px] text-slate-400">Idempotency</span>
+        </div>
+      </div>
+      <div class="rounded border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div class="text-[11px] font-medium uppercase text-slate-500">DLQ Candidates</div>
+        <div class="mt-1 flex items-baseline justify-between">
+          <span id="telemetry-errors" class="text-xl font-bold font-mono text-rose-600">--</span>
+          <span class="text-[10px] text-slate-400">Failures</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- T0–T6 Control Loop Timeline Card -->
+    <section class="mb-7 rounded border border-[#e4e8ee] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900 flex items-center space-x-2">
+            <span>⏱️ KEDA Control Loop Latency Timeline (T0 → T6)</span>
+          </h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Event-driven lifecycle stages measuring API enqueueing, KEDA scaling signal, Pod scheduling, and worker job completion.
+          </p>
+        </div>
+        <button onclick="toggleTimelineDetails()" id="btn-toggle-timeline" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+          Show Formulas & Observability Sources ▾
+        </button>
+      </div>
+
+      <!-- Stepper Visualizer -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center">
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 font-mono">T0</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">API Receive</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">api_received_at</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 font-mono">T1</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">SQS Enqueue</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">enqueued_at</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">T2</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">KEDA Signal</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">Scaler Poll (15s)</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">T3</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">Replica Target</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">HPA Rescale Event</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">T4</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">Pod Created</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">creationTimestamp</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">T5</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">Pod Ready</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">Ready condition</div>
+        </div>
+        <div class="step-pill rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">T6</span>
+          <div class="text-xs font-semibold text-slate-800 mt-1">Job Complete</div>
+          <div class="text-[11px] text-slate-500 font-mono mt-0.5 truncate">completed_at</div>
+        </div>
+      </div>
+
+      <!-- Collapsible Detailed Formulas Table -->
+      <div id="timeline-details" class="hidden mt-4 pt-3 border-t border-slate-100">
+        <div class="overflow-x-auto text-xs">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-slate-400 font-semibold border-b border-slate-100">
+                <th class="py-1.5 pr-4">Derived Interval</th>
+                <th class="py-1.5 pr-4">Mathematical Formula</th>
+                <th class="py-1.5 pr-4">Telemetry Source</th>
+                <th class="py-1.5">Measurement Uncertainty / Limits</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-600 font-mono text-[11px]">
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">API-to-Queue</td>
+                <td class="py-1.5 pr-4 text-indigo-700">T1 - T0</td>
+                <td class="py-1.5 pr-4">API Express logs</td>
+                <td class="py-1.5 font-sans">Single-process monotonic clock (&lt; 15ms)</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">Queue Detection</td>
+                <td class="py-1.5 pr-4 text-purple-700">T2 - T1</td>
+                <td class="py-1.5 pr-4">KEDA Operator log</td>
+                <td class="py-1.5 font-sans">Subject to 15s SQS scaler polling interval</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">Scale Decision</td>
+                <td class="py-1.5 pr-4 text-purple-700">T3 - T2</td>
+                <td class="py-1.5 pr-4">HPA SuccessfulRescale / 1s sampling</td>
+                <td class="py-1.5 font-sans">15s HPA sync period; 1000ms polling jitter</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">Pod Scheduling & Startup</td>
+                <td class="py-1.5 pr-4 text-blue-700">T5 - T4</td>
+                <td class="py-1.5 pr-4">Kubelet Pod conditions</td>
+                <td class="py-1.5 font-sans">1s transition timestamp resolution; includes image pull</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">Queue-to-Capacity</td>
+                <td class="py-1.5 pr-4 text-emerald-700">T5 - T1</td>
+                <td class="py-1.5 pr-4">Composite end-to-end scale-out</td>
+                <td class="py-1.5 font-sans">Total time until new worker replica is Ready to poll</td>
+              </tr>
+              <tr>
+                <td class="py-1.5 pr-4 font-sans font-medium text-slate-800">End-to-End Job Completion</td>
+                <td class="py-1.5 pr-4 text-emerald-700">T6 - T0</td>
+                <td class="py-1.5 pr-4">API T0 vs Worker T6 log</td>
+                <td class="py-1.5 font-sans">Amazon Time Sync Service on EC2 (&lt; 1ms drift)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reproducible Test Profiles & 1-Click Command Generator -->
+    <section class="mb-7 rounded border border-[#e4e8ee] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-800 flex items-center space-x-2">
+            <span>🚀 Reproducible Experiment Workflows (k6 & Chaos)</span>
+          </h2>
+          <p class="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+            Execute these scripts from the repository root. Commands are automatically generated with your active endpoints.
+            Always adhere to the approved execution sequence: <strong>Baseline → Load Scale-out → Pod Failure</strong>.
+          </p>
+        </div>
+        <div class="flex items-center space-x-2 text-xs">
+          <span class="text-slate-400">Platform:</span>
+          <button onclick="setPlatform('ps1')" id="btn-tab-ps1" class="px-2 py-1 rounded font-medium bg-slate-800 text-white">PowerShell</button>
+          <button onclick="setPlatform('bash')" id="btn-tab-bash" class="px-2 py-1 rounded font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">Bash</button>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-4">
+        <!-- 01 Baseline -->
+        <article class="rounded border border-slate-200 bg-slate-50 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">01 · Baseline</div>
+            <h3 class="mt-1 text-sm font-semibold text-slate-800">Low Steady Load</h3>
+            <p class="mt-1 text-xs leading-5 text-slate-500">1 VU for 30s. Records baseline API enqueue acknowledgement and worker processing without queue backlog.</p>
+          </div>
+          <button onclick="copyExperimentCommand('baseline')"
+            class="mt-3 w-full rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700 transition-colors flex items-center justify-center space-x-1">
+            <span>📋 Copy Baseline Command</span>
+          </button>
+        </article>
+
+        <!-- 02 Scale-Out Load -->
+        <article class="rounded border border-indigo-200 bg-indigo-50/50 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">02 · Autoscaling</div>
+            <h3 class="mt-1 text-sm font-semibold text-slate-800">Scale-Out Load Test</h3>
+            <p class="mt-1 text-xs leading-5 text-slate-500">Ramps to 10 VUs, holds 60s, ramps down. Breaches SQS `queueLength=5` threshold and verifies scale-out to 4+ replicas.</p>
+          </div>
+          <button onclick="copyExperimentCommand('load')"
+            class="mt-3 w-full rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors flex items-center justify-center space-x-1">
+            <span>📋 Copy Load Command</span>
+          </button>
+        </article>
+
+        <!-- 03 Sudden Spike -->
+        <article class="rounded border border-purple-200 bg-purple-50/50 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-purple-600">03 · Traffic Burst</div>
+            <h3 class="mt-1 text-sm font-semibold text-slate-800">Sudden Spike Test</h3>
+            <p class="mt-1 text-xs leading-5 text-slate-500">Instant jump to 20 VUs in 5s. Tests rapid backlog accumulation, scale-out responsiveness, and recovery timing.</p>
+          </div>
+          <button onclick="copyExperimentCommand('spike')"
+            class="mt-3 w-full rounded bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition-colors flex items-center justify-center space-x-1">
+            <span>📋 Copy Spike Command</span>
+          </button>
+        </article>
+
+        <!-- 04 Pod Failure -->
+        <article class="rounded border border-rose-200 bg-rose-50/50 p-4 flex flex-col justify-between">
+          <div>
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-rose-600">04 · Chaos Resilience</div>
+            <h3 class="mt-1 text-sm font-semibold text-slate-800">Worker Pod Failure</h3>
+            <p class="mt-1 text-xs leading-5 text-slate-500">Guarded failure test: terminates active worker pod mid-job, validating SQS visibility timeout and zero message loss.</p>
+          </div>
+          <button onclick="copyExperimentCommand('pod-failure')"
+            class="mt-3 w-full rounded border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 transition-colors flex items-center justify-center space-x-1">
+            <span>📋 Copy Guarded Chaos</span>
+          </button>
+        </article>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+        <div class="flex items-center space-x-2 text-xs text-slate-500">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Node / AZ failure tests are strictly gated: requires team approval, isolated environment, and rollback plan.</span>
+        </div>
+        <div class="flex items-center space-x-3 text-xs">
+          <button onclick="copyExperimentCommand('collector')"
+            class="font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-900">
+            Copy Telemetry Collector Script
+          </button>
+          <span class="text-slate-300">|</span>
+          <button onclick="copyExperimentCommand('grafana')"
+            class="font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-900">
+            Copy Grafana Port-Forward
+          </button>
+        </div>
+      </div>
+    </section>
     
-    <!-- Search Bar & Counter -->
-    <div class="flex items-center space-x-4 mb-6">
+    <!-- Scenarios Search Bar & Counter -->
+    <div class="flex items-center justify-between space-x-4 mb-4">
       <div class="relative w-full max-w-[420px]">
         <input 
           id="search-input" 
           type="text" 
           oninput="onSearch(this.value)"
-          placeholder="Search by name, category, or state..." 
-          class="w-full bg-white border border-[#dce3ec] rounded px-3.5 py-1.5 text-[13px] placeholder-[#94a3b8] focus:outline-none focus:border-[#94a3b8] focus:ring-1 focus:ring-[#94a3b8] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+          placeholder="Filter scenarios by name, category, or severity..." 
+          class="w-full bg-white border border-[#dce3ec] rounded-lg px-3.5 py-1.5 text-[13px] placeholder-[#94a3b8] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-sm"
         />
         <button 
           id="clear-btn" 
@@ -145,20 +409,20 @@
         </button>
       </div>
 
-      <span id="scenario-counter" class="text-xs text-[#8a99ad] whitespace-nowrap">
-        2 scenarios
+      <span id="scenario-counter" class="text-xs text-[#8a99ad] font-mono whitespace-nowrap">
+        Loading scenarios...
       </span>
     </div>
 
     <!-- Scenarios Table Container -->
-    <div class="bg-white rounded border border-[#e4e8ee] shadow-[0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden">
+    <div class="bg-white rounded-xl border border-[#e4e8ee] shadow-sm overflow-hidden mb-12">
       
       <!-- Table Header Row -->
-      <div class="scenario-grid px-6 py-2.5 text-[11px] font-semibold text-[#8a99ad] tracking-wider uppercase border-b border-[#edf1f5]">
-        <div>NAME</div>
+      <div class="scenario-grid px-6 py-2.5 text-[11px] font-semibold text-[#8a99ad] tracking-wider uppercase border-b border-[#edf1f5] bg-slate-50/70">
+        <div>SCENARIO NAME & DESCRIPTION</div>
         <div class="text-left">SEVERITY</div>
-        <div class="text-left">STATE</div>
-        <div class="text-right">ACTION</div>
+        <div class="text-left">REAL-TIME STATE</div>
+        <div class="text-right">CONTROL</div>
       </div>
 
       <!-- Scenarios List Render Container -->
@@ -170,7 +434,7 @@
       <div id="no-results" class="hidden py-14 text-center">
         <p class="text-sm font-medium text-slate-600">No matching scenarios found</p>
         <p class="text-xs text-slate-400 mt-1">Try another keyword or clear the search query.</p>
-        <button onclick="clearSearch()" class="mt-3 text-xs text-blue-600 hover:underline">Clear search</button>
+        <button onclick="clearSearch()" class="mt-3 text-xs text-indigo-600 hover:underline">Clear search</button>
       </div>
 
     </div>
@@ -178,21 +442,89 @@
 
   <!-- Toast Notification -->
   <div id="toast" class="fixed bottom-6 right-6 transition-all duration-300 opacity-0 translate-y-3 pointer-events-none z-50">
-    <div class="bg-slate-900 text-white text-xs px-4 py-2 rounded shadow-lg flex items-center space-x-2">
+    <div class="bg-slate-900 text-white text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center space-x-2 border border-slate-700">
       <span id="toast-text">Reset complete</span>
     </div>
   </div>
 
   <script>
-    // Only list scenarios implemented by the local API/worker stack.
+    let activePlatform = 'ps1';
+
+    function setPlatform(p) {
+      activePlatform = p;
+      const bPs1 = document.getElementById('btn-tab-ps1');
+      const bBash = document.getElementById('btn-tab-bash');
+      if (p === 'ps1') {
+        bPs1.className = 'px-2 py-1 rounded font-medium bg-slate-800 text-white';
+        bBash.className = 'px-2 py-1 rounded font-medium bg-slate-100 text-slate-600 hover:bg-slate-200';
+      } else {
+        bBash.className = 'px-2 py-1 rounded font-medium bg-slate-800 text-white';
+        bPs1.className = 'px-2 py-1 rounded font-medium bg-slate-100 text-slate-600 hover:bg-slate-200';
+      }
+    }
+
+    function toggleTimelineDetails() {
+      const el = document.getElementById('timeline-details');
+      const btn = document.getElementById('btn-toggle-timeline');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        btn.textContent = 'Hide Formulas & Observability Sources ▴';
+      } else {
+        el.classList.add('hidden');
+        btn.textContent = 'Show Formulas & Observability Sources ▾';
+      }
+    }
+
+    // Comprehensive scenario catalog
     const scenarios = [
       {
-        category: 'INFRASTRUCTURE',
+        category: 'LOAD & BACKLOG SCENARIOS',
         items: [
           {
             id: 'traffic-spike',
-            title: 'Traffic spike',
-            slug: 'traffic-spike',
+            title: 'Traffic Spike (Rapid Ingress)',
+            slug: 'traffic-spike · Burst of HTTP POST /jobs requests sent to API',
+            severity: 'Medium',
+            maxJobs: 25,
+            state: 'unavailable',
+            supported: false
+          },
+          {
+            id: 'sqs-backlog-spike',
+            title: 'SQS Backlog Spike (Direct SQS Burst)',
+            slug: 'sqs-backlog-spike · Direct high-rate batch injection into SQS to breach KEDA threshold',
+            severity: 'High',
+            maxJobs: 20,
+            state: 'unavailable',
+            supported: false
+          },
+          {
+            id: 'slow-worker-backlog',
+            title: 'Slow Worker / Latency Surge',
+            slug: 'slow-worker-backlog · Heavy compute jobs (processTimeMs=12000) causing queue accumulation',
+            severity: 'High',
+            maxJobs: 15,
+            state: 'unavailable',
+            supported: false
+          }
+        ]
+      },
+      {
+        category: 'APPLICATION RESILIENCE',
+        items: [
+          {
+            id: 'poison-pill-dlq',
+            title: 'Poison Pill / DLQ Route',
+            slug: 'poison-pill-dlq · Faulty jobs (shouldFail=true) testing worker retry and DLQ diversion',
+            severity: 'High',
+            maxJobs: 10,
+            state: 'unavailable',
+            supported: false
+          },
+          {
+            id: 'duplicate-burst',
+            title: 'Duplicate Message Burst (Idempotency)',
+            slug: 'duplicate-burst · Injects 50% duplicate job_ids to verify deduplication cache',
             severity: 'Medium',
             maxJobs: 20,
             state: 'unavailable',
@@ -201,16 +533,37 @@
         ]
       },
       {
-        category: 'QUEUE',
+        category: 'CHAOS & FAULT TOLERANCE',
         items: [
           {
-            id: 'sqs-backlog-spike',
-            title: 'SQS backlog spike',
-            slug: 'sqs-backlog-spike',
+            id: 'worker-pod-failure-guided',
+            title: 'Worker Pod Termination Chaos',
+            slug: 'pod-failure.ps1 / .sh · Terminate active worker pod, verifying redelivery and 0 message loss',
             severity: 'High',
-            maxJobs: 12,
-            state: 'unavailable',
-            supported: false
+            maxJobs: 1,
+            state: 'guided',
+            supported: true,
+            isGuided: true
+          },
+          {
+            id: 'graceful-drain-guided',
+            title: 'Worker Rolling Restart / Graceful Drain',
+            slug: 'kubectl rollout restart · Validates 25s SIGTERM graceful in-flight completion',
+            severity: 'Medium',
+            maxJobs: 1,
+            state: 'guided',
+            supported: true,
+            isGuided: true
+          },
+          {
+            id: 'multi-az-rebalance-guided',
+            title: 'Multi-AZ Node Cordon & Rebalance',
+            slug: 'topology-spread · Validates worker Pod distribution across ap-southeast-1a/b/c',
+            severity: 'High',
+            maxJobs: 1,
+            state: 'guided',
+            supported: true,
+            isGuided: true
           }
         ]
       }
@@ -219,8 +572,103 @@
     let queryText = '';
     let activeRequestId = null;
     let scenarioStateInitialized = false;
+    let activeEnvironment = 'unset';
 
-    // Live Clock matching format 'updated 5:22:25 PM'
+    function experimentCommand(kind) {
+      const isPs1 = activePlatform === 'ps1';
+
+      if (kind === 'grafana') {
+        return 'kubectl port-forward -n observability service/monitoring-grafana 3000:80';
+      }
+
+      if (kind === 'collector') {
+        if (isPs1) {
+          return [
+            '$env:KUBE_CONTEXT = (kubectl config current-context)',
+            '$env:QUEUE_URL = "<TEST_QUEUE_URL>"',
+            '$env:AWS_REGION = "ap-southeast-1"',
+            '.\\scripts\\metrics\\collect-control-loop-latency.ps1 -CollectionDurationSeconds 180'
+          ].join('\n');
+        } else {
+          return [
+            'export KUBE_CONTEXT="$(kubectl config current-context)"',
+            'export QUEUE_URL="<TEST_QUEUE_URL>"',
+            'export AWS_REGION="ap-southeast-1"',
+            'bash scripts/metrics/collect-control-loop-latency.sh'
+          ].join('\n');
+        }
+      }
+
+      if (kind === 'pod-failure') {
+        if (isPs1) {
+          return [
+            '$env:CHAOS_ENVIRONMENT = "dev"',
+            '$env:KUBE_CONTEXT = (kubectl config current-context)',
+            `$env:API_URL = "${window.location.origin}"`,
+            '$env:AWS_REGION = "ap-southeast-1"',
+            '$env:SQS_QUEUE_URL = "<TEST_QUEUE_URL>"',
+            '.\\scripts\\chaos\\pod-failure.ps1'
+          ].join('\n');
+        } else {
+          return [
+            'export CHAOS_ENVIRONMENT=dev',
+            'export KUBE_CONTEXT="$(kubectl config current-context)"',
+            `export API_URL="${window.location.origin}"`,
+            'export AWS_REGION=ap-southeast-1',
+            'export SQS_QUEUE_URL="<TEST_QUEUE_URL>"',
+            'export JOB_PROCESS_TIME_MS=40000',
+            'bash scripts/chaos/pod-failure.sh'
+          ].join('\n');
+        }
+      }
+
+      if (isPs1) {
+        if (kind === 'baseline') {
+          return `.\\scripts\\load-test\\run-k6.ps1 -Profile baseline -ApiUrl "${window.location.origin}"`;
+        } else if (kind === 'load') {
+          return `.\\scripts\\load-test\\run-k6.ps1 -Profile load -PeakVUs 10 -ApiUrl "${window.location.origin}"`;
+        } else if (kind === 'spike') {
+          return `.\\scripts\\load-test\\run-k6.ps1 -Profile spike -SpikeVUs 20 -ApiUrl "${window.location.origin}"`;
+        }
+      } else {
+        if (kind === 'baseline') {
+          return `./scripts/load-test/run-k6.sh baseline "${window.location.origin}"`;
+        } else if (kind === 'load') {
+          return `./scripts/load-test/run-k6.sh load "${window.location.origin}" 10`;
+        } else if (kind === 'spike') {
+          return `PROFILE=spike SPIKE_VUS=20 ./scripts/load-test/run-k6.sh spike "${window.location.origin}"`;
+        }
+      }
+
+      return `./scripts/load-test/run-k6.sh baseline "${window.location.origin}"`;
+    }
+
+    async function copyExperimentCommand(kind) {
+      const command = experimentCommand(kind);
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(command);
+        } else {
+          const field = document.createElement('textarea');
+          field.value = command;
+          field.setAttribute('readonly', '');
+          field.style.position = 'absolute';
+          field.style.left = '-9999px';
+          document.body.appendChild(field);
+          field.select();
+          const copied = document.execCommand('copy');
+          field.remove();
+          if (!copied) throw new Error('Clipboard access was denied by browser');
+        }
+        showToast(kind === 'pod-failure'
+          ? 'Copied guarded Chaos command; replace <TEST_QUEUE_URL> before running'
+          : 'Command copied to clipboard');
+      } catch (error) {
+        showToast(`Could not copy command: ${error.message}`);
+      }
+    }
+
+    // Live Clock
     function updateClock() {
       const now = new Date();
       let hours = now.getHours();
@@ -260,9 +708,9 @@
 
           // Category banner
           renderedHtml += `
-            <div class="bg-[#f2f5f9] px-6 py-2 border-y border-[#e8ecf2]">
+            <div class="bg-[#f2f5f9] px-6 py-2 border-y border-[#e8ecf2] flex items-center justify-between">
               <span class="text-xs font-semibold text-[#475569] tracking-wider uppercase">
-                ${group.category} ${matchingItems.length}
+                ${group.category} (${matchingItems.length})
               </span>
             </div>
           `;
@@ -272,58 +720,80 @@
             const isRunning = item.state === 'running';
 
             // Severity color
-            let severityColor = 'text-[#e11d48]'; // High - coral red
-            if (item.severity === 'Medium') severityColor = 'text-[#d97706]'; // Medium - amber orange
-            if (item.severity === 'Low') severityColor = 'text-[#64748b]';
+            let severityBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-700">HIGH</span>';
+            if (item.severity === 'Medium') severityBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-700">MEDIUM</span>';
+            if (item.severity === 'Low') severityBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-600">LOW</span>';
 
             // State display
             let stateHtml = '';
             const sentJobs = item.run ? item.run.sentJobs : 0;
             const maxJobs = item.run ? item.run.maxJobs : item.maxJobs;
-            const runProgress = `<span class="ml-3 text-[10px] text-[#8a99ad]">${sentJobs}/${maxJobs} jobs sent</span>`;
-            if (isRunning) {
+            const progressPercent = maxJobs > 0 ? Math.round((sentJobs / maxJobs) * 100) : 0;
+
+            if (item.isGuided) {
               stateHtml = `
                 <div class="flex flex-col items-start">
-                  <div class="flex items-center space-x-1.5 text-xs text-emerald-700 font-medium">
+                  <div class="flex items-center space-x-1.5 text-xs text-indigo-700 font-medium">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                    <span>Guarded Script</span>
+                  </div>
+                  <span class="text-[10px] text-slate-400 font-mono mt-0.5">Terminal execution</span>
+                </div>
+              `;
+            } else if (isRunning) {
+              stateHtml = `
+                <div class="flex flex-col items-start w-full pr-4">
+                  <div class="flex items-center space-x-1.5 text-xs text-emerald-700 font-semibold">
                     <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 running-dot"></span>
                     <span>Running</span>
+                    <span class="text-[10px] text-slate-400 font-mono">(${sentJobs}/${maxJobs})</span>
                   </div>
-                  ${runProgress}
+                  <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden">
+                    <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300" style="width: ${progressPercent}%"></div>
+                  </div>
                 </div>
               `;
             } else {
               const labels = {
                 idle: 'Idle',
-                completed: 'Injection complete',
+                completed: 'Completed',
                 stopped: 'Stopped',
                 failed: 'Failed',
                 unavailable: 'Unavailable'
               };
-              const label = labels[item.state] || 'Unavailable';
+              const label = labels[item.state] || 'Ready';
               stateHtml = `
                 <div class="flex flex-col items-start">
-                  <div class="flex items-center space-x-1.5 text-xs ${item.state === 'failed' ? 'text-rose-700' : 'text-[#64748b]'}">
-                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-[#94a3b8]"></span>
+                  <div class="flex items-center space-x-1.5 text-xs ${item.state === 'failed' ? 'text-rose-700 font-semibold' : 'text-[#64748b]'}">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full ${item.state === 'completed' ? 'bg-emerald-400' : 'bg-slate-300'}"></span>
                     <span>${label}</span>
                   </div>
-                  ${runProgress}
+                  <span class="text-[10px] text-slate-400 font-mono mt-0.5">${item.maxJobs} jobs batch</span>
                 </div>
               `;
             }
 
             // Action button
             let actionHtml = '';
-            if (!item.supported) {
+            if (item.isGuided) {
               actionHtml = `
-                <button disabled title="Not available in the local Compose stack"
-                  class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3.5 py-1 rounded">
+                <button
+                  onclick="copyExperimentCommand('pod-failure')"
+                  class="rounded border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium px-3 py-1 transition-colors">
+                  Copy Run
+                </button>
+              `;
+            } else if (!item.supported) {
+              actionHtml = `
+                <button disabled title="Scenario controller not enabled or queue not ready"
+                  class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3 py-1 rounded">
                   N/A
                 </button>
               `;
             } else if (activeRequestId === item.id) {
               actionHtml = `
-                <button disabled class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3.5 py-1 rounded">
-                  Please wait
+                <button disabled class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3 py-1 rounded">
+                  Working...
                 </button>
               `;
             } else if (isRunning) {
@@ -341,7 +811,7 @@
                   onclick="toggleScenario('${item.id}')"
                   class="btn-start inline-flex items-center justify-center space-x-1 text-xs font-medium px-3.5 py-1 rounded">
                   <span class="text-[10px]">▶</span>
-                  <span>Start</span>
+                  <span>Trigger</span>
                 </button>
               `;
             }
@@ -349,12 +819,12 @@
             renderedHtml += `
               <div class="scenario-grid px-6 py-3.5 border-b border-[#f1f4f8] hover:bg-[#fafbfd] transition-colors duration-100">
                 <div class="pr-4">
-                  <div class="text-[13.5px] font-medium text-[#1e293b] leading-tight">${item.title}</div>
+                  <div class="text-[13.5px] font-semibold text-slate-900 leading-tight">${item.title}</div>
                   <div class="text-[11.5px] text-[#8a99ad] font-normal mt-0.5">${item.slug}</div>
                 </div>
 
-                <div class="text-xs font-normal ${severityColor}">
-                  ${item.severity}
+                <div>
+                  ${severityBadge}
                 </div>
 
                 <div>
@@ -370,7 +840,7 @@
         }
       });
 
-      counter.textContent = `${totalCount} scenarios`;
+      counter.textContent = `${totalCount} scenarios available`;
 
       if (totalCount === 0) {
         container.innerHTML = '';
@@ -406,10 +876,8 @@
 
       const action = item.state === 'running' ? 'stop' : 'start';
       if (action === 'start') {
-        const limits = id === 'traffic-spike'
-          ? 'This sends at most 20 jobs to the local queue over about 10 seconds.'
-          : 'This sends at most 12 jobs to the local queue over about 6 seconds.';
-        if (!window.confirm(`${limits} A batch already being submitted may finish, and jobs accepted by SQS may continue after Stop. Continue?`)) {
+        const queueTarget = activeEnvironment === 'eks-test' ? 'AWS SQS test queue' : 'local queue';
+        if (!window.confirm(`Trigger scenario '${item.title}'?\nThis dispatches up to ${item.maxJobs} jobs to ${queueTarget}.\nContinue?`)) {
           return;
         }
       }
@@ -421,14 +889,46 @@
         await loadScenarioStates();
         const run = result.scenario;
         showToast(action === 'start'
-          ? `Started ${item.title}: ${run.sentJobs}/${run.maxJobs} jobs queued`
-          : `Stopped sending jobs for ${item.title}`);
+          ? `Dispatched ${item.title}: ${run.sentJobs}/${run.maxJobs} jobs queued`
+          : `Stopped future batches for ${item.title}`);
       } catch (error) {
         showToast(error.message);
         await loadScenarioStates();
       } finally {
         activeRequestId = null;
         render();
+      }
+    }
+
+    async function fetchLiveMetrics() {
+      try {
+        const res = await fetch('/metrics');
+        if (!res.ok) return;
+        const text = await res.text();
+
+        // Helper to extract gauge / counter values
+        const matchMetric = (regex) => {
+          const m = text.match(regex);
+          return m ? m[1] : null;
+        };
+
+        const visible = matchMetric(/api_sqs_approximate_messages_visible(?:\{[^\}]*\})?\s+(\d+)/);
+        const inflight = matchMetric(/api_sqs_approximate_messages_not_visible(?:\{[^\}]*\})?\s+(\d+)/);
+        const accepted = matchMetric(/api_jobs_accepted_total\s+(\d+)/);
+
+        if (visible !== null) document.getElementById('telemetry-visible').textContent = visible;
+        if (inflight !== null) document.getElementById('telemetry-inflight').textContent = inflight;
+        if (accepted !== null) document.getElementById('telemetry-accepted').textContent = accepted;
+
+        // Fetch worker metrics if reachable (via proxy or worker endpoint)
+        const workerRes = await fetch('/api/worker-health', { method: 'GET' }).catch(() => null);
+        if (workerRes && workerRes.ok) {
+          const wJson = await workerRes.json();
+          if (wJson.total_duplicates !== undefined) document.getElementById('telemetry-duplicates').textContent = wJson.total_duplicates;
+          if (wJson.total_errors !== undefined) document.getElementById('telemetry-errors').textContent = wJson.total_errors;
+        }
+      } catch (e) {
+        // Silently skip if metrics scrape is transiently unreachable
       }
     }
 
@@ -440,11 +940,14 @@
 
         let changed = !scenarioStateInitialized;
         const apiScenarios = new Map(data.scenarios.map(scenario => [scenario.id, scenario]));
+        
         scenarios.forEach(group => group.items.forEach(item => {
+          if (item.isGuided) return; // Keep guided scenarios static
           const current = apiScenarios.get(item.id);
           const supported = Boolean(data.enabled && current && current.supported);
           const state = supported ? current.status : 'unavailable';
           const run = supported ? current.run : null;
+
           if (item.supported !== supported ||
             item.state !== state ||
             (item.run && run && (
@@ -452,39 +955,56 @@
               item.run.maxJobs !== run.maxJobs
             )) ||
             Boolean(item.run) !== Boolean(run)) changed = true;
+
           item.supported = supported;
           item.state = state;
           item.run = run;
         }));
 
         const banner = document.getElementById('environment-banner');
+        const envBadge = document.getElementById('env-badge');
+        activeEnvironment = data.environment || 'unset';
+
+        if (activeEnvironment === 'eks-test') {
+          envBadge.textContent = 'EKS TEST (AWS SQS)';
+          envBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-emerald-100 text-emerald-800';
+        } else if (activeEnvironment === 'local') {
+          envBadge.textContent = 'LOCAL DOCKER';
+          envBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-blue-100 text-blue-800';
+        } else {
+          envBadge.textContent = activeEnvironment.toUpperCase();
+          envBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-slate-100 text-slate-600';
+        }
+
         const bannerText = data.enabled
-          ? 'Local-only: Start submits a bounded number of jobs. Stop prevents future batches; pending and accepted jobs may still be processed.'
-          : `Chaos controls are disabled: ${data.reason}`;
-        const bannerClass = `mb-5 rounded border px-4 py-3 text-xs ${data.enabled
+          ? `Connected to ${activeEnvironment === 'eks-test' ? 'EKS cluster (AWS SQS)' : 'local environment'}. Triggering scenarios dispatches bounded batches to SQS to test KEDA scaling and worker processing. Verify metrics on Grafana.`
+          : `Chaos scenarios controller: ${data.reason}`;
+        const bannerClass = `mb-5 rounded-lg border px-4 py-3 text-xs ${data.enabled
           ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
           : 'border-amber-200 bg-amber-50 text-amber-800'}`;
+
         if (banner.textContent !== bannerText || banner.className !== bannerClass) changed = true;
         banner.textContent = bannerText;
         banner.className = bannerClass;
+
         scenarioStateInitialized = true;
         if (changed) render();
       } catch (error) {
         const banner = document.getElementById('environment-banner');
-        const bannerText = `Cannot connect to the local scenario controller: ${error.message}`;
-        const bannerClass = 'mb-5 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800';
-        let changed = !scenarioStateInitialized ||
-          banner.textContent !== bannerText ||
-          banner.className !== bannerClass;
-        banner.textContent = bannerText;
-        banner.className = bannerClass;
+        const envBadge = document.getElementById('env-badge');
+        envBadge.textContent = 'OFFLINE';
+        envBadge.className = 'px-2 py-0.5 rounded text-[11px] font-semibold tracking-wide uppercase bg-rose-100 text-rose-800';
+        banner.textContent = `Scenario controller disconnected: ${error.message}`;
+        banner.className = 'mb-5 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800';
+        
         scenarios.forEach(group => group.items.forEach(item => {
-          if (item.supported || item.state !== 'unavailable') changed = true;
-          item.supported = false;
-          item.state = 'unavailable';
+          if (!item.isGuided && (item.supported || item.state !== 'unavailable')) {
+            item.supported = false;
+            item.state = 'unavailable';
+          }
         }));
         scenarioStateInitialized = true;
-        if (changed) render();
+        render();
       }
     }
 
@@ -492,24 +1012,23 @@
       const active = scenarios.flatMap(group => group.items)
         .filter(item => item.supported && item.state === 'running');
       if (active.length === 0) {
-        showToast('No active scenarios to stop');
+        showToast('No active scenarios currently running');
         return;
       }
-      if (!window.confirm('Stop all active scenarios? A pending batch and jobs already accepted by SQS may still be processed.')) {
+      if (!window.confirm('Stop all active scenarios? In-flight batches already accepted by SQS will finish.')) {
         return;
       }
 
       try {
         for (const item of active) await requestScenario(item.id, 'stop');
         await loadScenarioStates();
-        showToast('Stopped future batches; pending/queued jobs may continue');
+        showToast('Stopped future batches for all running scenarios');
       } catch (error) {
         showToast(error.message);
         await loadScenarioStates();
       }
     }
 
-    // Search query listener
     function onSearch(val) {
       queryText = val.trim();
       const clearBtn = document.getElementById('clear-btn');
@@ -529,7 +1048,6 @@
       render();
     }
 
-    // Show toast message
     function showToast(msg) {
       const toast = document.getElementById('toast');
       const text = document.getElementById('toast-text');
@@ -541,15 +1059,16 @@
       setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
         toast.classList.add('opacity-0', 'translate-y-3');
-      }, 2000);
+      }, 2400);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
       render();
       loadScenarioStates();
-      setInterval(loadScenarioStates, 2000);
+      fetchLiveMetrics();
+      setInterval(loadScenarioStates, 2500);
+      setInterval(fetchLiveMetrics, 3000);
     });
   </script>
 </body>
 </html>
-

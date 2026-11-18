@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ==============================================================================
+# Kịch bản Chaos Test 2: Node Failure & Multi-AZ Resiliency (Gated Guarded)
+# Mục đích:
+#   1. Giả lập 1 máy ảo EC2 ở Availability Zone bị gián đoạn / drain node.
+#   2. Kiểm tra tính năng Multi-AZ Resiliency: Các Pods trên node đó tự động
+#      được reschedule sang các node ở Availability Zone khác nhờ TopologySpread.
+#   3. Hệ thống vẫn tiếp tục duy trì worker phục vụ, không downtime.
+# ==============================================================================
 set -Eeuo pipefail
 
 usage() {

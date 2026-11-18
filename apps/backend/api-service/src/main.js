@@ -49,27 +49,89 @@ function escapePrometheusLabel(value) {
 }
 
 function queueAttributeGauge(name, help, value, queueName) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    throw new Error(`SQS returned an invalid value for ${name}: ${value}`);
+  }
   return [
     `# HELP ${name} ${help}`,
     `# TYPE ${name} gauge`,
-    `${name}{queue="${escapePrometheusLabel(queueName)}"} ${Number(value) || 0}`
+    `${name}{queue="${escapePrometheusLabel(queueName)}"} ${numericValue}`
   ];
 }
 
+const apiMetrics = {
+  totalRequests: 0,
+  jobsReceived: 0,
+  jobsAccepted: 0,
+  jobsRejected: 0
+};
+
 const chaosScenarioDefinitions = {
   'traffic-spike': {
-    maxJobs: 20,
-    batchSize: 1,
-    intervalMs: 500,
+    name: 'Traffic Spike',
+    description: 'Burst of HTTP POST /jobs requests sent to API to test ingress capacity',
+    category: 'LOAD & BACKLOG',
+    severity: 'Medium',
+    maxJobs: 25,
+    batchSize: 2,
+    intervalMs: 400,
     processTimeMs: 1500,
-    transport: 'api'
+    transport: 'api',
+    shouldFail: false,
+    duplicateRatio: 0
   },
   'sqs-backlog-spike': {
-    maxJobs: 12,
-    batchSize: 2,
+    name: 'SQS Backlog Spike',
+    description: 'Direct high-rate batch injection into SQS to trigger rapid KEDA autoscaling',
+    category: 'LOAD & BACKLOG',
+    severity: 'High',
+    maxJobs: 20,
+    batchSize: 4,
+    intervalMs: 800,
+    processTimeMs: 3000,
+    transport: 'sqs',
+    shouldFail: false,
+    duplicateRatio: 0
+  },
+  'slow-worker-backlog': {
+    name: 'Slow Worker / Latency Surge',
+    description: 'Heavy compute jobs (processTimeMs=12000) causing queue accumulation and sustained scale-out',
+    category: 'LOAD & BACKLOG',
+    severity: 'High',
+    maxJobs: 15,
+    batchSize: 1,
+    intervalMs: 800,
+    processTimeMs: 12000,
+    transport: 'api',
+    shouldFail: false,
+    duplicateRatio: 0
+  },
+  'poison-pill-dlq': {
+    name: 'Poison Pill / DLQ Route',
+    description: 'Jobs configured to fail (shouldFail=true) testing worker retry and DLQ routing',
+    category: 'APPLICATION RESILIENCE',
+    severity: 'High',
+    maxJobs: 10,
+    batchSize: 1,
     intervalMs: 1000,
-    processTimeMs: 5000,
-    transport: 'sqs'
+    processTimeMs: 800,
+    transport: 'api',
+    shouldFail: true,
+    duplicateRatio: 0
+  },
+  'duplicate-burst': {
+    name: 'Duplicate Message Burst (Idempotency)',
+    description: 'Repeated identical job_ids to verify in-memory deduplication cache',
+    category: 'APPLICATION RESILIENCE',
+    severity: 'Medium',
+    maxJobs: 20,
+    batchSize: 2,
+    intervalMs: 500,
+    processTimeMs: 1000,
+    transport: 'api',
+    shouldFail: false,
+    duplicateRatio: 0.5
   }
 };
 
@@ -137,8 +199,15 @@ async function publishChaosBatch(run, definition) {
   for (let index = 0; index < definition.batchSize; index++) {
     if (run.status !== 'running' || run.sentJobs >= run.maxJobs) break;
 
-    const jobId = `chaos-${run.id}-${run.sentJobs + 1}`;
+    let jobId = `chaos-${run.id}-${run.sentJobs + 1}`;
+    // If duplicateRatio is configured and we already sent jobs, inject duplicates to test idempotency
+    if (definition.duplicateRatio > 0 && run.sentJobs > 0 && Math.random() < definition.duplicateRatio) {
+      const prevIndex = Math.max(1, Math.floor(Math.random() * run.sentJobs) + 1);
+      jobId = `chaos-${run.id}-${prevIndex}`;
+    }
+
     const createdAt = new Date().toISOString();
+    const shouldFail = Boolean(definition.shouldFail);
     const message = {
       job_id: jobId,
       payload: {
@@ -147,7 +216,7 @@ async function publishChaosBatch(run, definition) {
         run_id: run.id
       },
       processTimeMs: run.processTimeMs,
-      shouldFail: false,
+      shouldFail: shouldFail,
       createdAt,
       client_sent_at: createdAt
     };
@@ -160,6 +229,7 @@ async function publishChaosBatch(run, definition) {
           job_id: jobId,
           payload: message.payload,
           processTimeMs: message.processTimeMs,
+          shouldFail: shouldFail,
           client_sent_at: createdAt
         })
       });
@@ -221,6 +291,7 @@ autoCreateQueueIfMock();
 
 // ── Request Logger Middleware ──
 app.use((req, res, next) => {
+  apiMetrics.totalRequests++;
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
@@ -239,7 +310,9 @@ app.get('/', (req, res) => {
     queueConfigured: !!QUEUE_URL,
     endpoints: {
       health: 'GET /health',
-      createJob: 'POST /jobs'
+      createJob: 'POST /jobs',
+      metrics: 'GET /metrics',
+      scenarios: 'GET /chaos/scenarios'
     }
   });
 });
@@ -247,9 +320,18 @@ app.get('/', (req, res) => {
 app.get('/chaos/scenarios', (req, res) => {
   const supportedIds = Object.keys(chaosScenarioDefinitions);
   const scenarios = supportedIds.map((id) => {
+    const def = chaosScenarioDefinitions[id];
     const run = latestChaosRuns.get(id);
     return {
       id,
+      name: def.name,
+      description: def.description,
+      category: def.category,
+      severity: def.severity,
+      maxJobs: def.maxJobs,
+      processTimeMs: def.processTimeMs,
+      transport: def.transport,
+      shouldFail: def.shouldFail,
       supported: chaosAvailable,
       status: run ? run.status : 'idle',
       run: run ? serializeChaosRun(run) : null
@@ -372,6 +454,18 @@ app.get('/metrics', async (req, res) => {
     const attributes = result.Attributes || {};
     const queueName = QUEUE_URL.split('/').pop() || 'unknown';
     const output = [
+      `# HELP api_http_requests_total Total HTTP requests received by API service`,
+      `# TYPE api_http_requests_total counter`,
+      `api_http_requests_total ${apiMetrics.totalRequests}`,
+      `# HELP api_jobs_received_total Total job requests received`,
+      `# TYPE api_jobs_received_total counter`,
+      `api_jobs_received_total ${apiMetrics.jobsReceived}`,
+      `# HELP api_jobs_accepted_total Total jobs accepted and enqueued to SQS`,
+      `# TYPE api_jobs_accepted_total counter`,
+      `api_jobs_accepted_total ${apiMetrics.jobsAccepted}`,
+      `# HELP api_jobs_rejected_total Total jobs rejected due to validation or SQS error`,
+      `# TYPE api_jobs_rejected_total counter`,
+      `api_jobs_rejected_total ${apiMetrics.jobsRejected}`,
       ...queueAttributeGauge(
         'api_sqs_approximate_messages_visible',
         'Approximate number of visible messages in the SQS queue',
@@ -392,7 +486,8 @@ app.get('/metrics', async (req, res) => {
       )
     ].join('\n');
 
-    return res.type('text/plain').send(`${output}\n`);
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    return res.send(`${output}\n`);
   } catch (error) {
     console.error('[METRICS] Failed to read SQS queue attributes:', error);
     return res.status(503).type('text/plain').send('Unable to read SQS queue attributes\n');
@@ -402,9 +497,11 @@ app.get('/metrics', async (req, res) => {
 // ── Route: POST /jobs ──
 // Accepts job requests and sends messages to SQS
 app.post('/jobs', async (req, res) => {
+  apiMetrics.jobsReceived++;
   const apiReceivedAt = new Date().toISOString();
   try {
     if (!QUEUE_URL) {
+      apiMetrics.jobsRejected++;
       console.error('[ERROR] QUEUE_URL environment variable is not defined.');
       return res.status(500).json({
         error: 'QueueConfigurationError',
@@ -416,6 +513,7 @@ app.post('/jobs', async (req, res) => {
 
     // Validate payload
     if (typeof body !== 'object' || Array.isArray(body)) {
+      apiMetrics.jobsRejected++;
       return res.status(400).json({
         error: 'InvalidPayload',
         message: 'Request body must be a valid JSON object'
@@ -459,6 +557,7 @@ app.post('/jobs', async (req, res) => {
 
     const sqsResponse = await sqsClient.send(sendCommand);
     const enqueuedAt = new Date().toISOString();
+    apiMetrics.jobsAccepted++;
 
     console.log(
       `[SQS SENT] job_id=${jobId} message_id=${sqsResponse.MessageId} ` +
@@ -477,6 +576,7 @@ app.post('/jobs', async (req, res) => {
     });
 
   } catch (error) {
+    apiMetrics.jobsRejected++;
     console.error('[ERROR] Failed to send message to SQS:', error);
     return res.status(503).json({
       error: 'SQSSendFailed',

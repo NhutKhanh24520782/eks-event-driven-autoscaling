@@ -6,6 +6,8 @@ resources:
   - serviceaccount-worker.yaml
   - deployment-api.yaml
   - deployment-worker.yaml
+  - deployment-frontend.yaml
   - service-api.yaml
   - service-worker.yaml
+  - service-frontend.yaml
   - ingress.yaml

@@ -438,7 +438,7 @@ module "ecr" {
   source = "../../modules/ecr"
 
   name_prefix      = var.ecr_name_prefix
-  repository_names = ["api", "worker"]
+  repository_names = ["api", "worker", "frontend"]
 }
 
 # ---------------------------------------------------------------------------

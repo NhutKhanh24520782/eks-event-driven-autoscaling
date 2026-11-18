@@ -212,12 +212,14 @@ the existing k6 workload may not cause the CPU HPA to scale.
 Follow [`observability/README.md`](observability/README.md). In summary,
 create the `observability` namespace and Grafana credential Secret, install
 the kube-prometheus-stack and Loki/Promtail Helm charts using the provided
-values, then apply `observability\prometheus\worker-podmonitor.yaml`. Ensure
-the relevant claims use the `gp3` StorageClass and become `Bound`.
+values, then apply `observability\prometheus\api-podmonitor.yaml`. Worker
+metrics use the existing ServiceMonitor in `k8s\config`. Ensure the relevant
+claims use the `gp3` StorageClass and become `Bound`.
 
-Import `observability\grafana\dashboards\autoscaling-overview.json`. The
-dashboard currently shows worker counters/gauges, Kubernetes replicas, and
-worker logs. It does not currently visualize SQS queue depth or T0–T6 latency.
+Import `observability\grafana\dashboards\worker-monitoring.json`. The dashboard
+shows worker counters/gauges, SQS queue depth, Kubernetes replicas, processing
+latency, and Pod readiness. T0–T6 event latency is available in the collected
+experiment evidence.
 
 ### 8. Smoke test and load test
 

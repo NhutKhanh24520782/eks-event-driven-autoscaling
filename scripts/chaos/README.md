@@ -5,12 +5,13 @@ operations:
 
 | File | Scenario | Safeguards |
 | --- | --- | --- |
-| [`pod-failure.sh`](pod-failure.sh) | Submit a long-running job, identify the worker processing it, delete that Pod, then verify SQS redelivery and successful completion | Requires `CHAOS_ENVIRONMENT=dev`, explicit context/API URL, a typed confirmation, and a process time shorter than the queue visibility timeout |
-| [`node-failure.sh`](node-failure.sh) | Cordon and drain one named node, evicting only worker Pods, then verify Ready worker capacity outside the target AZ | Requires `CHAOS_ENVIRONMENT=dev`, explicit context/node, at least two desired replicas and two Ready AZs, typed confirmation, and automatic uncordon |
-| [`az-failure.md`](az-failure.md) | Multi-node AZ capacity-loss simulation and optional separately approved AWS network-isolation experiment | Does not delete subnets or mutate shared route tables/network ACLs |
+| [`pod-failure.sh`](pod-failure.sh) | Submit a long-running job, identify the worker processing it, delete that Pod, then verify SQS redelivery and successful completion | Requires `CHAOS_ENVIRONMENT=dev`, explicit context/API/queue/region, empty queue, actual visibility-timeout preflight, typed confirmation, and evidence output |
+| [`node-failure.sh`](node-failure.sh) | Cordon and drain one named node, evicting only worker Pods, then verify Ready worker capacity outside the target AZ | Guarded, but not approved for execution until the team agrees isolation, stop conditions, rollback, and cost limits |
+| [`az-failure.md`](az-failure.md) | Multi-node AZ capacity-loss planning and optional separately approved AWS network-isolation experiment | Planning only; no Node/AZ failure is authorized by the current sequence |
 
 The scripts require Bash, `kubectl`, and an explicitly selected development
-context. The Pod test also requires `curl` and access to the development API.
+context. The Pod test also requires AWS CLI, `curl`, access to the development
+API, and the same quiet test queue used by the API.
 Review each script's `--help` and the runbook before execution. The scripts
 make Kubernetes changes and are intentionally interactive; do not remove the
 confirmation or point them at production.
