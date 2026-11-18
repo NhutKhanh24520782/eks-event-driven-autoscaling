@@ -12,7 +12,7 @@ services:
   # Host port mapped to 3000 (Windows reserves 8000-8100)
   api-service:
     build:
-      context: ./apps/api-service
+      context: ./apps/backend/api-service
       dockerfile: Dockerfile
     container_name: api-service
     ports:
@@ -31,7 +31,7 @@ services:
   # Host port mapped to 3001 (Windows reserves 8000-8100)
   worker-service:
     build:
-      context: ./apps/worker-service
+      context: ./apps/backend/worker-service
       dockerfile: Dockerfile
     container_name: worker-service
     ports:

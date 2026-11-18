@@ -36,7 +36,7 @@ cluster autoscaling.
 
 | Path | Purpose |
 | --- | --- |
-| [`apps/`](apps/README.md) | Node.js API and SQS worker |
+| [`apps/`](apps/README.md) | Backend services and frontend dashboard |
 | [`infra/`](infra/README.md) | Terraform bootstrap, EKS environment, and reusable modules |
 | [`k8s/`](k8s/README.md) | Application, storage, ingress, topology, and autoscaling manifests |
 | [`observability/`](observability/README.md) | Prometheus/Grafana, Loki/Promtail, and dashboard |
@@ -136,9 +136,9 @@ $workerImage = terraform -chdir=infra\envs\dev output -raw ecr_worker_url
 $registry = $apiImage.Split('/')[0]
 aws ecr get-login-password --region $region |
   docker login --username AWS --password-stdin $registry
-docker build -t "${apiImage}:latest" -f apps\api-service\Dockerfile apps\api-service
+docker build -t "${apiImage}:latest" -f apps\backend\api-service\Dockerfile apps\backend\api-service
 docker push "${apiImage}:latest"
-docker build -t "${workerImage}:latest" -f apps\worker-service\Dockerfile apps\worker-service
+docker build -t "${workerImage}:latest" -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
 docker push "${workerImage}:latest"
 ```
 
