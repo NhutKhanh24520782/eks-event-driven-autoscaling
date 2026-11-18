@@ -437,6 +437,24 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/worker-health', async (req, res) => {
+  const workerHost = process.env.WORKER_HOST || 'worker-service';
+  const workerPort = process.env.WORKER_PORT || '8081';
+  try {
+    const response = await fetch(`http://${workerHost}:${workerPort}/health`, { signal: AbortSignal.timeout(2000) });
+    if (!response.ok) throw new Error(`Worker HTTP ${response.status}`);
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(200).json({
+      status: 'unreachable',
+      message: err.message,
+      total_duplicates: 0,
+      total_errors: 0
+    });
+  }
+});
+
 app.get('/metrics', async (req, res) => {
   if (!QUEUE_URL) {
     return res.status(503).type('text/plain').send('QUEUE_URL is not configured\n');

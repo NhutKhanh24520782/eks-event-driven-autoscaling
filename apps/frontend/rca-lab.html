@@ -902,7 +902,7 @@
 
     async function fetchLiveMetrics() {
       try {
-        const res = await fetch('/metrics');
+        const res = await fetch('/api/metrics').catch(() => fetch('/metrics'));
         if (!res.ok) return;
         const text = await res.text();
 
