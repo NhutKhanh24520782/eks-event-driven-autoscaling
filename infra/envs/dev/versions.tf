@@ -29,11 +29,11 @@ terraform {
   # ---------------------------------------------------------------------------
   backend "s3" {
     # Các giá trị này được điền sau khi chạy bootstrap
-    bucket         = "multiaz-autoscaling-tfstate-274118253913"
-    key            = "envs/dev/terraform.tfstate"
-    region         = "ap-southeast-1"
-    dynamodb_table = "multiaz-autoscaling-tflock"
-    encrypt        = true
+    bucket = "multiaz-autoscaling-tfstate-867703356304"
+    key    = "envs/dev/terraform.tfstate"
+    region = "ap-southeast-1"
+    # dynamodb_table = "multiaz-autoscaling-tflock"
+    encrypt = true
   }
 }
 
@@ -67,7 +67,7 @@ provider "kubernetes" {
 provider "helm" {
   # Dùng cache riêng trong thư mục .terraform để không phụ thuộc
   # vào helm repo add đã chạy trước hay chưa trên máy local
-  repository_cache      = "${path.module}/.terraform/helm_cache"
+  repository_cache       = "${path.module}/.terraform/helm_cache"
   repository_config_path = "${path.module}/.terraform/helm_repositories.yaml"
 
   kubernetes {

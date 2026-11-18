@@ -444,13 +444,13 @@ module "ecr" {
 # ---------------------------------------------------------------------------
 # 9. AWS Budget
 # ---------------------------------------------------------------------------
-module "budget" {
-  source = "../../modules/budget"
+# module "budget" {
+#   source = "../../modules/budget"
 
-  monthly_budget_usd = var.monthly_budget_usd
-  alert_emails       = var.alert_emails
-  alert_thresholds   = [50, 80, 100]
-}
+#   monthly_budget_usd = var.monthly_budget_usd
+#   alert_emails       = var.alert_emails
+#   alert_thresholds   = [50, 80, 100]
+# }
 
 # ---------------------------------------------------------------------------
 # 10. Kubernetes Namespace "app" – tạo sẵn để K8s manifest có thể deploy vào

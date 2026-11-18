@@ -4,4 +4,4 @@ metadata:
   name: app-config
 data:
   AWS_REGION: ap-southeast-1
-  QUEUE_URL: https://sqs.ap-southeast-1.amazonaws.com/274118253913/jobs-queue
+  QUEUE_URL: https://sqs.ap-southeast-1.amazonaws.com/867703356304/jobs-queue
