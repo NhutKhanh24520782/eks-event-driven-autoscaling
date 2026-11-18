@@ -152,6 +152,38 @@ async function processSingleMessage(message) {
     ? jobData.processTimeMs
     : DEFAULT_PROCESS_TIME_MS;
   const shouldFail = !!jobData.shouldFail;
+  const simulateCrash = Boolean(
+    jobData.simulateCrash ||
+    (jobData.payload && jobData.payload.simulateCrash) ||
+    jobData.action === 'crash'
+  );
+  const gracefulDrain = Boolean(
+    jobData.gracefulDrain ||
+    (jobData.payload && jobData.payload.gracefulDrain) ||
+    jobData.action === 'graceful-drain'
+  );
+
+  // Chaos Injection: Immediate Process Termination (Pod Crash simulation)
+  if (simulateCrash) {
+    console.error(
+      `[WORKER ${WORKER_ID}] [CHAOS CRASH INJECTED] Received simulated crash for job_id=${jobId} ` +
+      `(receive_count=${receiveCount}). Terminating worker process with exit code 1 immediately! ` +
+      `Message remains in SQS for visibility redelivery recovery.`
+    );
+    // Kubernetes will detect non-zero exit code, increment container restarts, and restart the Pod.
+    process.exit(1);
+  }
+
+  // Chaos Injection: Graceful Drain Simulation
+  if (gracefulDrain) {
+    console.log(
+      `[WORKER ${WORKER_ID}] [CHAOS DRAIN INJECTED] Received graceful drain instruction for job_id=${jobId}. ` +
+      `Deleting trigger message and initiating graceful shutdown...`
+    );
+    await deleteMessage(receiptHandle, messageId);
+    initiateGracefulShutdown('CHAOS_GRACEFUL_DRAIN');
+    return;
+  }
 
   // 1. Idempotency Check (Duplicate message handling)
   if (deduplicationCache.isDuplicate(jobId)) {

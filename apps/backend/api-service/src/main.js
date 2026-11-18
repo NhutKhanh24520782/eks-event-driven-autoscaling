@@ -68,30 +68,49 @@ const apiMetrics = {
 };
 
 const chaosScenarioDefinitions = {
+  'baseline-load': {
+    name: 'Baseline Load (Steady State)',
+    description: 'Steady low traffic (1 job every 2s) establishing baseline without queue backlog',
+    category: 'LOAD & BACKLOG',
+    severity: 'Low',
+    maxJobs: 10,
+    batchSize: 1,
+    intervalMs: 2000,
+    processTimeMs: 500,
+    transport: 'api',
+    shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: false,
+    duplicateRatio: 0
+  },
   'traffic-spike': {
     name: 'Traffic Spike',
-    description: 'Burst of HTTP POST /jobs requests sent to API to test ingress capacity',
+    description: 'Burst of HTTP POST /jobs requests sent to API to test ingress capacity and trigger KEDA scale-out',
     category: 'LOAD & BACKLOG',
     severity: 'Medium',
     maxJobs: 25,
-    batchSize: 2,
-    intervalMs: 400,
+    batchSize: 5,
+    intervalMs: 300,
     processTimeMs: 1500,
     transport: 'api',
     shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: false,
     duplicateRatio: 0
   },
   'sqs-backlog-spike': {
     name: 'SQS Backlog Spike',
-    description: 'Direct high-rate batch injection into SQS to trigger rapid KEDA autoscaling',
+    description: 'Direct high-rate batch injection into SQS to rapidly breach KEDA queueLength=5 threshold',
     category: 'LOAD & BACKLOG',
     severity: 'High',
-    maxJobs: 20,
-    batchSize: 4,
-    intervalMs: 800,
-    processTimeMs: 3000,
+    maxJobs: 30,
+    batchSize: 5,
+    intervalMs: 250,
+    processTimeMs: 2500,
     transport: 'sqs',
     shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: false,
     duplicateRatio: 0
   },
   'slow-worker-backlog': {
@@ -100,29 +119,33 @@ const chaosScenarioDefinitions = {
     category: 'LOAD & BACKLOG',
     severity: 'High',
     maxJobs: 15,
-    batchSize: 1,
+    batchSize: 2,
     intervalMs: 800,
     processTimeMs: 12000,
     transport: 'api',
     shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: false,
     duplicateRatio: 0
   },
   'poison-pill-dlq': {
     name: 'Poison Pill / DLQ Route',
-    description: 'Jobs configured to fail (shouldFail=true) testing worker retry and DLQ routing',
+    description: 'Faulty jobs configured to fail (shouldFail=true) testing worker retry and Dead Letter Queue routing',
     category: 'APPLICATION RESILIENCE',
     severity: 'High',
     maxJobs: 10,
-    batchSize: 1,
+    batchSize: 2,
     intervalMs: 1000,
     processTimeMs: 800,
     transport: 'api',
     shouldFail: true,
+    simulateCrash: false,
+    gracefulDrain: false,
     duplicateRatio: 0
   },
   'duplicate-burst': {
     name: 'Duplicate Message Burst (Idempotency)',
-    description: 'Repeated identical job_ids to verify in-memory deduplication cache',
+    description: 'Repeated identical job_ids to verify worker in-memory deduplication cache',
     category: 'APPLICATION RESILIENCE',
     severity: 'Medium',
     maxJobs: 20,
@@ -131,7 +154,39 @@ const chaosScenarioDefinitions = {
     processTimeMs: 1000,
     transport: 'api',
     shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: false,
     duplicateRatio: 0.5
+  },
+  'worker-pod-failure': {
+    name: 'Worker Pod Failure Chaos',
+    description: 'Injects abrupt worker container termination (process.exit), validating K8s container restart and SQS visibility recovery with 0 message loss',
+    category: 'CHAOS & FAULT TOLERANCE',
+    severity: 'High',
+    maxJobs: 3,
+    batchSize: 1,
+    intervalMs: 3000,
+    processTimeMs: 2000,
+    transport: 'api',
+    shouldFail: false,
+    simulateCrash: true,
+    gracefulDrain: false,
+    duplicateRatio: 0
+  },
+  'graceful-drain': {
+    name: 'Worker Graceful Drain Chaos',
+    description: 'Triggers graceful shutdown on worker, completing in-flight jobs within 25s window before terminating cleanly',
+    category: 'CHAOS & FAULT TOLERANCE',
+    severity: 'Medium',
+    maxJobs: 2,
+    batchSize: 1,
+    intervalMs: 4000,
+    processTimeMs: 3000,
+    transport: 'api',
+    shouldFail: false,
+    simulateCrash: false,
+    gracefulDrain: true,
+    duplicateRatio: 0
   }
 };
 
@@ -208,6 +263,8 @@ async function publishChaosBatch(run, definition) {
 
     const createdAt = new Date().toISOString();
     const shouldFail = Boolean(definition.shouldFail);
+    const simulateCrash = Boolean(definition.simulateCrash);
+    const gracefulDrain = Boolean(definition.gracefulDrain);
     const message = {
       job_id: jobId,
       payload: {
@@ -217,6 +274,8 @@ async function publishChaosBatch(run, definition) {
       },
       processTimeMs: run.processTimeMs,
       shouldFail: shouldFail,
+      simulateCrash: simulateCrash,
+      gracefulDrain: gracefulDrain,
       createdAt,
       client_sent_at: createdAt
     };
@@ -230,6 +289,8 @@ async function publishChaosBatch(run, definition) {
           payload: message.payload,
           processTimeMs: message.processTimeMs,
           shouldFail: shouldFail,
+          simulateCrash: simulateCrash,
+          gracefulDrain: gracefulDrain,
           client_sent_at: createdAt
         })
       });
@@ -544,6 +605,16 @@ app.post('/jobs', async (req, res) => {
     const clientSentAt = typeof body.client_sent_at === 'string' ? body.client_sent_at : null;
     const processTimeMs = typeof body.processTimeMs === 'number' ? body.processTimeMs : 1000;
     const shouldFail = !!body.shouldFail;
+    const simulateCrash = Boolean(
+      body.simulateCrash ||
+      (body.payload && body.payload.simulateCrash) ||
+      body.action === 'crash'
+    );
+    const gracefulDrain = Boolean(
+      body.gracefulDrain ||
+      (body.payload && body.payload.gracefulDrain) ||
+      body.action === 'graceful-drain'
+    );
 
     // Structured message payload according to Integration Contract
     const messagePayload = {
@@ -551,6 +622,8 @@ app.post('/jobs', async (req, res) => {
       payload: body.payload || body,
       processTimeMs: processTimeMs,
       shouldFail: shouldFail,
+      simulateCrash: simulateCrash,
+      gracefulDrain: gracefulDrain,
       createdAt: createdAt,
       client_sent_at: clientSentAt
     };
