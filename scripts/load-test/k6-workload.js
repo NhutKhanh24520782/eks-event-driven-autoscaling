@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 // Lấy URL API từ biến môi trường khi chạy lệnh
-const API_URL = __ENV.API_URL || 'http://localhost:8080'; 
+const API_URL = __ENV.API_URL || 'http://localhost:8080';
 
 export const options = {
   // Thiết lập các giai đoạn (stages) để test KEDA
@@ -18,7 +18,7 @@ export const options = {
 export default function () {
   // Payload phải khớp với Contract trong file PDF (có job_id và payload)
   const payload = JSON.stringify({
-    job_id: `job-${__VU}-${__ITER}-${Date.now()}`, 
+    job_id: `job-${__VU}-${__ITER}-${Date.now()}`,
     payload: { example: "test data" }
   });
 

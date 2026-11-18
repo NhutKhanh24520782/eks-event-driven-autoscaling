@@ -182,7 +182,7 @@ reports/
 !package.json
 !package-lock.json
 !worker-monitoring.json
-
+!eks-event-driven-autoscaling-master.json
 
 # ==========================================
 # Secrets / Credentials
