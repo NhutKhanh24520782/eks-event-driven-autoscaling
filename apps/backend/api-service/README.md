@@ -59,7 +59,7 @@ IRSA.
 ## Run and build
 
 ```powershell
-cd apps\api-service
+cd apps\backend\api-service
 npm install
 npm start
 ```
@@ -67,7 +67,7 @@ npm start
 Build from the repository root:
 
 ```powershell
-docker build -t api-service:dev -f apps\api-service\Dockerfile apps\api-service
+docker build -t api-service:dev -f apps\backend\api-service\Dockerfile apps\backend\api-service
 ```
 
 ## Current limitations / next steps

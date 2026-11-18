@@ -48,7 +48,7 @@ be visible in the in-flight gauge at a 30-second Prometheus scrape interval.
 ## Run and build
 
 ```powershell
-cd apps\worker-service
+cd apps\backend\worker-service
 npm install
 npm start
 ```
@@ -56,7 +56,7 @@ npm start
 Build from the repository root:
 
 ```powershell
-docker build -t worker-service:dev -f apps\worker-service\Dockerfile apps\worker-service
+docker build -t worker-service:dev -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
 ```
 
 In EKS, verify the pod uses the `worker` service account and that

@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rca-lab — Failure Scenarios</title>
+  
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+          colors: {
+            appBg: '#f0f3f8',
+            catBg: '#f2f5f9',
+            borderLight: '#e4e8ee',
+            textMain: '#1e293b',
+            textMuted: '#64748b',
+            textSub: '#8a99ad',
+            severityHigh: '#e11d48',
+            severityMedium: '#d97706',
+            actionGreen: '#10b981',
+            actionGreenHover: '#059669',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f0f3f8;
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Table custom grid proportions matching reference image */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: 1fr 140px 140px 120px;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .scenario-grid {
+        grid-template-columns: 1fr 90px 90px 90px;
+      }
+    }
+
+    /* Start button styling matching reference */
+    .btn-start {
+      background-color: #10b981;
+      color: #ffffff;
+      transition: all 0.15s ease-in-out;
+    }
+    .btn-start:hover {
+      background-color: #059669;
+    }
+    .btn-start:active {
+      transform: scale(0.97);
+    }
+
+    /* Stop button styling */
+    .btn-stop {
+      background-color: #334155;
+      color: #ffffff;
+      transition: all 0.15s ease-in-out;
+    }
+    .btn-stop:hover {
+      background-color: #1e293b;
+    }
+
+    /* Pulse animation for running state */
+    .running-dot {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulse {
+      to {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#f0f3f8] text-[#1e293b]">
+
+  <!-- Top Navbar Header -->
+  <header class="bg-white border-b border-[#e4e8ee] px-6 lg:px-12 py-3.5 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <span class="text-[17px] font-bold tracking-tight text-black">rca-lab</span>
+      <span class="text-slate-400 font-normal text-sm select-none">—</span>
+      <span class="text-[14px] text-[#64748b] font-normal">Failure Scenarios</span>
+    </div>
+
+    <div class="flex items-center space-x-4">
+      <span class="text-xs text-[#8a99ad]">
+        updated <span id="clock" class="text-[#64748b]">5:22:25 PM</span>
+      </span>
+      <button 
+        onclick="resetAll()" 
+        class="border border-[#f87171] hover:bg-[#fef2f2] text-[#ef4444] hover:text-[#dc2626] text-xs font-normal px-3 py-1 rounded transition-colors duration-150">
+        Reset all
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-[1400px] mx-auto px-6 lg:px-12 py-7">
+    
+    <!-- Search Bar & Counter -->
+    <div class="flex items-center space-x-4 mb-6">
+      <div class="relative w-full max-w-[420px]">
+        <input 
+          id="search-input" 
+          type="text" 
+          oninput="onSearch(this.value)"
+          placeholder="Search by name, category, or state..." 
+          class="w-full bg-white border border-[#dce3ec] rounded px-3.5 py-1.5 text-[13px] placeholder-[#94a3b8] focus:outline-none focus:border-[#94a3b8] focus:ring-1 focus:ring-[#94a3b8] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
+        />
+        <button 
+          id="clear-btn" 
+          onclick="clearSearch()" 
+          class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
+          ✕
+        </button>
+      </div>
+
+      <span id="scenario-counter" class="text-xs text-[#8a99ad] whitespace-nowrap">
+        18 scenarios
+      </span>
+    </div>
+
+    <!-- Scenarios Table Container -->
+    <div class="bg-white rounded border border-[#e4e8ee] shadow-[0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden">
+      
+      <!-- Table Header Row -->
+      <div class="scenario-grid px-6 py-2.5 text-[11px] font-semibold text-[#8a99ad] tracking-wider uppercase border-b border-[#edf1f5]">
+        <div>NAME</div>
+        <div class="text-left">SEVERITY</div>
+        <div class="text-left">STATE</div>
+        <div class="text-right">ACTION</div>
+      </div>
+
+      <!-- Scenarios List Render Container -->
+      <div id="scenarios-list">
+        <!-- Rendered dynamically via JavaScript -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="no-results" class="hidden py-14 text-center">
+        <p class="text-sm font-medium text-slate-600">No matching scenarios found</p>
+        <p class="text-xs text-slate-400 mt-1">Try another keyword or clear the search query.</p>
+        <button onclick="clearSearch()" class="mt-3 text-xs text-blue-600 hover:underline">Clear search</button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 right-6 transition-all duration-300 opacity-0 translate-y-3 pointer-events-none z-50">
+    <div class="bg-slate-900 text-white text-xs px-4 py-2 rounded shadow-lg flex items-center space-x-2">
+      <span id="toast-text">Reset complete</span>
+    </div>
+  </div>
+
+  <script>
+    // Scenarios data matching screenshot and project
+    const scenarios = [
+      {
+        category: 'DATABASE',
+        items: [
+          {
+            id: 'mysql-analytics-queries',
+            title: 'Analytics queries on the orders database',
+            slug: 'mysql-analytics-queries',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'mysql-lock-contention',
+            title: 'Stalled transaction holding row locks on orders',
+            slug: 'mysql-lock-contention',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'pg-analytics-queries',
+            title: 'Analytics queries on the products database',
+            slug: 'pg-analytics-queries',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'pg-exclusive-lock',
+            title: 'Stalled migration holding an exclusive lock on products',
+            slug: 'pg-exclusive-lock',
+            severity: 'High',
+            state: 'Idle'
+          }
+        ]
+      },
+      {
+        category: 'DEPLOY',
+        items: [
+          {
+            id: 'order-service-gc-regression',
+            title: 'Bad deploy: order-service GC pressure',
+            slug: 'order-service-gc-regression',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'order-service-memory-leak',
+            title: 'Bad deploy: order-service slow memory leak (performance)',
+            slug: 'order-service-memory-leak',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'product-catalog-gc-pressure',
+            title: 'Bad deploy: product-catalog GC (allocation) pressure',
+            slug: 'product-catalog-gc-pressure',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'recommendation-memory-leak',
+            title: 'Bad deploy: recommendation-service memory leak',
+            slug: 'recommendation-memory-leak',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'review-service-event-loop',
+            title: 'Bad deploy: review-service event-loop saturation',
+            slug: 'review-service-event-loop',
+            severity: 'High',
+            state: 'Idle'
+          }
+        ]
+      },
+      {
+        category: 'INFRASTRUCTURE',
+        items: [
+          {
+            id: 'cpu-noisy-neighbor',
+            title: 'CPU noisy neighbor starving order-service',
+            slug: 'cpu-noisy-neighbor',
+            severity: 'Medium',
+            state: 'Idle'
+          },
+          {
+            id: 'traffic-spike',
+            title: 'Traffic spike',
+            slug: 'traffic-spike',
+            severity: 'Medium',
+            state: 'Idle'
+          }
+        ]
+      },
+      {
+        category: 'NETWORK',
+        items: [
+          {
+            id: 'dns-slow-resolution',
+            title: 'Degraded DNS resolution (slow name lookups)',
+            slug: 'dns-slow-resolution',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'cross-az-latency',
+            title: 'Cross-AZ inter-service network latency',
+            slug: 'cross-az-latency',
+            severity: 'High',
+            state: 'Idle'
+          }
+        ]
+      },
+      {
+        category: 'QUEUE',
+        items: [
+          {
+            id: 'sqs-backlog-spike',
+            title: 'SQS consumer backlog delay & queue congestion',
+            slug: 'sqs-backlog-spike',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'sqs-poison-pill',
+            title: 'Dead-letter queue poison pill message surge',
+            slug: 'sqs-poison-pill',
+            severity: 'High',
+            state: 'Idle'
+          }
+        ]
+      },
+      {
+        category: 'CACHE & STORAGE',
+        items: [
+          {
+            id: 'redis-connection-exhaustion',
+            title: 'Redis connection pool exhaustion under high concurrency',
+            slug: 'redis-connection-exhaustion',
+            severity: 'High',
+            state: 'Idle'
+          },
+          {
+            id: 'ebs-iops-throttling',
+            title: 'EBS gp3 volume IOPS burst budget depletion',
+            slug: 'ebs-iops-throttling',
+            severity: 'Medium',
+            state: 'Idle'
+          },
+          {
+            id: 'node-disk-full',
+            title: 'Kubelet root filesystem disk pressure eviction',
+            slug: 'node-disk-full',
+            severity: 'Medium',
+            state: 'Idle'
+          }
+        ]
+      }
+    ];
+
+    let queryText = '';
+
+    // Live Clock matching format 'updated 5:22:25 PM'
+    function updateClock() {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds} ${ampm}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Render table
+    function render() {
+      const container = document.getElementById('scenarios-list');
+      const counter = document.getElementById('scenario-counter');
+      const noResults = document.getElementById('no-results');
+
+      let renderedHtml = '';
+      let totalCount = 0;
+
+      scenarios.forEach(group => {
+        const matchingItems = group.items.filter(item => {
+          if (!queryText) return true;
+          const q = queryText.toLowerCase();
+          return (
+            item.title.toLowerCase().includes(q) ||
+            item.slug.toLowerCase().includes(q) ||
+            group.category.toLowerCase().includes(q) ||
+            item.severity.toLowerCase().includes(q) ||
+            item.state.toLowerCase().includes(q)
+          );
+        });
+
+        if (matchingItems.length > 0) {
+          totalCount += matchingItems.length;
+
+          // Category banner
+          renderedHtml += `
+            <div class="bg-[#f2f5f9] px-6 py-2 border-y border-[#e8ecf2]">
+              <span class="text-xs font-semibold text-[#475569] tracking-wider uppercase">
+                ${group.category} ${matchingItems.length}
+              </span>
+            </div>
+          `;
+
+          // Scenario rows
+          matchingItems.forEach(item => {
+            const isRunning = item.state === 'Running';
+
+            // Severity color
+            let severityColor = 'text-[#e11d48]'; // High - coral red
+            if (item.severity === 'Medium') severityColor = 'text-[#d97706]'; // Medium - amber orange
+            if (item.severity === 'Low') severityColor = 'text-[#64748b]';
+
+            // State display
+            let stateHtml = '';
+            if (isRunning) {
+              stateHtml = `
+                <div class="flex items-center space-x-1.5 text-xs text-emerald-700 font-medium">
+                  <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 running-dot"></span>
+                  <span>Running</span>
+                </div>
+              `;
+            } else {
+              stateHtml = `
+                <div class="flex items-center space-x-1.5 text-xs text-[#64748b]">
+                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-[#94a3b8]"></span>
+                  <span>Idle</span>
+                </div>
+              `;
+            }
+
+            // Action button
+            let actionHtml = '';
+            if (isRunning) {
+              actionHtml = `
+                <button 
+                  onclick="toggleState('${item.id}')" 
+                  class="btn-stop inline-flex items-center justify-center space-x-1 text-xs font-medium px-3.5 py-1 rounded">
+                  <span class="text-[10px]">■</span>
+                  <span>Stop</span>
+                </button>
+              `;
+            } else {
+              actionHtml = `
+                <button 
+                  onclick="toggleState('${item.id}')" 
+                  class="btn-start inline-flex items-center justify-center space-x-1 text-xs font-medium px-3.5 py-1 rounded">
+                  <span class="text-[10px]">▶</span>
+                  <span>Start</span>
+                </button>
+              `;
+            }
+
+            renderedHtml += `
+              <div class="scenario-grid px-6 py-3.5 border-b border-[#f1f4f8] hover:bg-[#fafbfd] transition-colors duration-100">
+                <div class="pr-4">
+                  <div class="text-[13.5px] font-medium text-[#1e293b] leading-tight">${item.title}</div>
+                  <div class="text-[11.5px] text-[#8a99ad] font-normal mt-0.5">${item.slug}</div>
+                </div>
+
+                <div class="text-xs font-normal ${severityColor}">
+                  ${item.severity}
+                </div>
+
+                <div>
+                  ${stateHtml}
+                </div>
+
+                <div class="text-right">
+                  ${actionHtml}
+                </div>
+              </div>
+            `;
+          });
+        }
+      });
+
+      counter.textContent = `${totalCount} scenarios`;
+
+      if (totalCount === 0) {
+        container.innerHTML = '';
+        noResults.classList.remove('hidden');
+      } else {
+        container.innerHTML = renderedHtml;
+        noResults.classList.add('hidden');
+      }
+    }
+
+    // Toggle scenario state
+    function toggleState(id) {
+      let target = null;
+      scenarios.forEach(g => {
+        g.items.forEach(i => {
+          if (i.id === id) target = i;
+        });
+      });
+
+      if (!target) return;
+
+      if (target.state === 'Idle') {
+        target.state = 'Running';
+        showToast(`Started scenario: ${target.title}`);
+      } else {
+        target.state = 'Idle';
+        showToast(`Stopped scenario: ${target.title}`);
+      }
+      render();
+    }
+
+    // Reset All scenarios
+    function resetAll() {
+      let count = 0;
+      scenarios.forEach(g => {
+        g.items.forEach(i => {
+          if (i.state === 'Running') {
+            i.state = 'Idle';
+            count++;
+          }
+        });
+      });
+      render();
+      showToast(count > 0 ? `Reset ${count} active scenarios to Idle` : 'All scenarios are currently Idle');
+    }
+
+    // Search query listener
+    function onSearch(val) {
+      queryText = val.trim();
+      const clearBtn = document.getElementById('clear-btn');
+      if (queryText) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      render();
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('search-input');
+      input.value = '';
+      queryText = '';
+      document.getElementById('clear-btn').classList.add('hidden');
+      render();
+    }
+
+    // Show toast message
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toast-text');
+      text.textContent = msg;
+
+      toast.classList.remove('opacity-0', 'translate-y-3');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-3');
+      }, 2000);
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+    });
+  </script>
+</body>
+</html>
+
