@@ -35,6 +35,10 @@ testing. A successful SQS send returns HTTP 202 with the job and message IDs.
 Invalid JSON returns 400, an unset queue returns 500, and an SQS send failure
 returns 503.
 
+The response and `[SQS SENT]` log include `api_received_at` and `enqueued_at`
+UTC timestamps. A caller may include `client_sent_at` for load-test
+correlation; cross-host latency calculations require synchronized clocks.
+
 Example:
 
 ```powershell

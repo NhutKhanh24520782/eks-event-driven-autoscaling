@@ -80,6 +80,11 @@
     .btn-stop:hover {
       background-color: #1e293b;
     }
+    .btn-disabled {
+      background-color: #cbd5e1;
+      color: #475569;
+      cursor: not-allowed;
+    }
 
     /* Pulse animation for running state */
     .running-dot {
@@ -117,6 +122,10 @@
 
   <!-- Main Content Layout -->
   <main class="max-w-[1400px] mx-auto px-6 lg:px-12 py-7">
+
+    <div id="environment-banner" class="mb-5 rounded border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+      Connecting to the local scenario controller...
+    </div>
     
     <!-- Search Bar & Counter -->
     <div class="flex items-center space-x-4 mb-6">
@@ -137,7 +146,7 @@
       </div>
 
       <span id="scenario-counter" class="text-xs text-[#8a99ad] whitespace-nowrap">
-        18 scenarios
+        2 scenarios
       </span>
     </div>
 
@@ -175,116 +184,19 @@
   </div>
 
   <script>
-    // Scenarios data matching screenshot and project
+    // Only list scenarios implemented by the local API/worker stack.
     const scenarios = [
-      {
-        category: 'DATABASE',
-        items: [
-          {
-            id: 'mysql-analytics-queries',
-            title: 'Analytics queries on the orders database',
-            slug: 'mysql-analytics-queries',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'mysql-lock-contention',
-            title: 'Stalled transaction holding row locks on orders',
-            slug: 'mysql-lock-contention',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'pg-analytics-queries',
-            title: 'Analytics queries on the products database',
-            slug: 'pg-analytics-queries',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'pg-exclusive-lock',
-            title: 'Stalled migration holding an exclusive lock on products',
-            slug: 'pg-exclusive-lock',
-            severity: 'High',
-            state: 'Idle'
-          }
-        ]
-      },
-      {
-        category: 'DEPLOY',
-        items: [
-          {
-            id: 'order-service-gc-regression',
-            title: 'Bad deploy: order-service GC pressure',
-            slug: 'order-service-gc-regression',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'order-service-memory-leak',
-            title: 'Bad deploy: order-service slow memory leak (performance)',
-            slug: 'order-service-memory-leak',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'product-catalog-gc-pressure',
-            title: 'Bad deploy: product-catalog GC (allocation) pressure',
-            slug: 'product-catalog-gc-pressure',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'recommendation-memory-leak',
-            title: 'Bad deploy: recommendation-service memory leak',
-            slug: 'recommendation-memory-leak',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'review-service-event-loop',
-            title: 'Bad deploy: review-service event-loop saturation',
-            slug: 'review-service-event-loop',
-            severity: 'High',
-            state: 'Idle'
-          }
-        ]
-      },
       {
         category: 'INFRASTRUCTURE',
         items: [
-          {
-            id: 'cpu-noisy-neighbor',
-            title: 'CPU noisy neighbor starving order-service',
-            slug: 'cpu-noisy-neighbor',
-            severity: 'Medium',
-            state: 'Idle'
-          },
           {
             id: 'traffic-spike',
             title: 'Traffic spike',
             slug: 'traffic-spike',
             severity: 'Medium',
-            state: 'Idle'
-          }
-        ]
-      },
-      {
-        category: 'NETWORK',
-        items: [
-          {
-            id: 'dns-slow-resolution',
-            title: 'Degraded DNS resolution (slow name lookups)',
-            slug: 'dns-slow-resolution',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'cross-az-latency',
-            title: 'Cross-AZ inter-service network latency',
-            slug: 'cross-az-latency',
-            severity: 'High',
-            state: 'Idle'
+            maxJobs: 20,
+            state: 'unavailable',
+            supported: false
           }
         ]
       },
@@ -293,49 +205,20 @@
         items: [
           {
             id: 'sqs-backlog-spike',
-            title: 'SQS consumer backlog delay & queue congestion',
+            title: 'SQS backlog spike',
             slug: 'sqs-backlog-spike',
             severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'sqs-poison-pill',
-            title: 'Dead-letter queue poison pill message surge',
-            slug: 'sqs-poison-pill',
-            severity: 'High',
-            state: 'Idle'
-          }
-        ]
-      },
-      {
-        category: 'CACHE & STORAGE',
-        items: [
-          {
-            id: 'redis-connection-exhaustion',
-            title: 'Redis connection pool exhaustion under high concurrency',
-            slug: 'redis-connection-exhaustion',
-            severity: 'High',
-            state: 'Idle'
-          },
-          {
-            id: 'ebs-iops-throttling',
-            title: 'EBS gp3 volume IOPS burst budget depletion',
-            slug: 'ebs-iops-throttling',
-            severity: 'Medium',
-            state: 'Idle'
-          },
-          {
-            id: 'node-disk-full',
-            title: 'Kubelet root filesystem disk pressure eviction',
-            slug: 'node-disk-full',
-            severity: 'Medium',
-            state: 'Idle'
+            maxJobs: 12,
+            state: 'unavailable',
+            supported: false
           }
         ]
       }
     ];
 
     let queryText = '';
+    let activeRequestId = null;
+    let scenarioStateInitialized = false;
 
     // Live Clock matching format 'updated 5:22:25 PM'
     function updateClock() {
@@ -386,7 +269,7 @@
 
           // Scenario rows
           matchingItems.forEach(item => {
-            const isRunning = item.state === 'Running';
+            const isRunning = item.state === 'running';
 
             // Severity color
             let severityColor = 'text-[#e11d48]'; // High - coral red
@@ -395,28 +278,58 @@
 
             // State display
             let stateHtml = '';
+            const sentJobs = item.run ? item.run.sentJobs : 0;
+            const maxJobs = item.run ? item.run.maxJobs : item.maxJobs;
+            const runProgress = `<span class="ml-3 text-[10px] text-[#8a99ad]">${sentJobs}/${maxJobs} jobs sent</span>`;
             if (isRunning) {
               stateHtml = `
-                <div class="flex items-center space-x-1.5 text-xs text-emerald-700 font-medium">
-                  <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 running-dot"></span>
-                  <span>Running</span>
+                <div class="flex flex-col items-start">
+                  <div class="flex items-center space-x-1.5 text-xs text-emerald-700 font-medium">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 running-dot"></span>
+                    <span>Running</span>
+                  </div>
+                  ${runProgress}
                 </div>
               `;
             } else {
+              const labels = {
+                idle: 'Idle',
+                completed: 'Injection complete',
+                stopped: 'Stopped',
+                failed: 'Failed',
+                unavailable: 'Unavailable'
+              };
+              const label = labels[item.state] || 'Unavailable';
               stateHtml = `
-                <div class="flex items-center space-x-1.5 text-xs text-[#64748b]">
-                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-[#94a3b8]"></span>
-                  <span>Idle</span>
+                <div class="flex flex-col items-start">
+                  <div class="flex items-center space-x-1.5 text-xs ${item.state === 'failed' ? 'text-rose-700' : 'text-[#64748b]'}">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-[#94a3b8]"></span>
+                    <span>${label}</span>
+                  </div>
+                  ${runProgress}
                 </div>
               `;
             }
 
             // Action button
             let actionHtml = '';
-            if (isRunning) {
+            if (!item.supported) {
               actionHtml = `
-                <button 
-                  onclick="toggleState('${item.id}')" 
+                <button disabled title="Not available in the local Compose stack"
+                  class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3.5 py-1 rounded">
+                  N/A
+                </button>
+              `;
+            } else if (activeRequestId === item.id) {
+              actionHtml = `
+                <button disabled class="btn-disabled inline-flex items-center justify-center text-xs font-medium px-3.5 py-1 rounded">
+                  Please wait
+                </button>
+              `;
+            } else if (isRunning) {
+              actionHtml = `
+                <button
+                  onclick="toggleScenario('${item.id}')"
                   class="btn-stop inline-flex items-center justify-center space-x-1 text-xs font-medium px-3.5 py-1 rounded">
                   <span class="text-[10px]">■</span>
                   <span>Stop</span>
@@ -424,8 +337,8 @@
               `;
             } else {
               actionHtml = `
-                <button 
-                  onclick="toggleState('${item.id}')" 
+                <button
+                  onclick="toggleScenario('${item.id}')"
                   class="btn-start inline-flex items-center justify-center space-x-1 text-xs font-medium px-3.5 py-1 rounded">
                   <span class="text-[10px]">▶</span>
                   <span>Start</span>
@@ -468,40 +381,132 @@
       }
     }
 
-    // Toggle scenario state
-    function toggleState(id) {
-      let target = null;
-      scenarios.forEach(g => {
-        g.items.forEach(i => {
-          if (i.id === id) target = i;
-        });
-      });
-
-      if (!target) return;
-
-      if (target.state === 'Idle') {
-        target.state = 'Running';
-        showToast(`Started scenario: ${target.title}`);
-      } else {
-        target.state = 'Idle';
-        showToast(`Stopped scenario: ${target.title}`);
+    function findScenario(id) {
+      for (const group of scenarios) {
+        const item = group.items.find(scenario => scenario.id === id);
+        if (item) return item;
       }
-      render();
+      return null;
     }
 
-    // Reset All scenarios
-    function resetAll() {
-      let count = 0;
-      scenarios.forEach(g => {
-        g.items.forEach(i => {
-          if (i.state === 'Running') {
-            i.state = 'Idle';
-            count++;
-          }
-        });
+    async function requestScenario(id, action) {
+      const response = await fetch(`/api/chaos/scenarios/${encodeURIComponent(id)}/${action}`, {
+        method: 'POST'
       });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || `Scenario request failed (${response.status})`);
+      }
+      return data;
+    }
+
+    async function toggleScenario(id) {
+      const item = findScenario(id);
+      if (!item || !item.supported || activeRequestId) return;
+
+      const action = item.state === 'running' ? 'stop' : 'start';
+      if (action === 'start') {
+        const limits = id === 'traffic-spike'
+          ? 'This sends at most 20 jobs to the local queue over about 10 seconds.'
+          : 'This sends at most 12 jobs to the local queue over about 6 seconds.';
+        if (!window.confirm(`${limits} A batch already being submitted may finish, and jobs accepted by SQS may continue after Stop. Continue?`)) {
+          return;
+        }
+      }
+
+      activeRequestId = id;
       render();
-      showToast(count > 0 ? `Reset ${count} active scenarios to Idle` : 'All scenarios are currently Idle');
+      try {
+        const result = await requestScenario(id, action);
+        await loadScenarioStates();
+        const run = result.scenario;
+        showToast(action === 'start'
+          ? `Started ${item.title}: ${run.sentJobs}/${run.maxJobs} jobs queued`
+          : `Stopped sending jobs for ${item.title}`);
+      } catch (error) {
+        showToast(error.message);
+        await loadScenarioStates();
+      } finally {
+        activeRequestId = null;
+        render();
+      }
+    }
+
+    async function loadScenarioStates() {
+      try {
+        const response = await fetch('/api/chaos/scenarios');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || `Controller unavailable (${response.status})`);
+
+        let changed = !scenarioStateInitialized;
+        const apiScenarios = new Map(data.scenarios.map(scenario => [scenario.id, scenario]));
+        scenarios.forEach(group => group.items.forEach(item => {
+          const current = apiScenarios.get(item.id);
+          const supported = Boolean(data.enabled && current && current.supported);
+          const state = supported ? current.status : 'unavailable';
+          const run = supported ? current.run : null;
+          if (item.supported !== supported ||
+            item.state !== state ||
+            (item.run && run && (
+              item.run.sentJobs !== run.sentJobs ||
+              item.run.maxJobs !== run.maxJobs
+            )) ||
+            Boolean(item.run) !== Boolean(run)) changed = true;
+          item.supported = supported;
+          item.state = state;
+          item.run = run;
+        }));
+
+        const banner = document.getElementById('environment-banner');
+        const bannerText = data.enabled
+          ? 'Local-only: Start submits a bounded number of jobs. Stop prevents future batches; pending and accepted jobs may still be processed.'
+          : `Chaos controls are disabled: ${data.reason}`;
+        const bannerClass = `mb-5 rounded border px-4 py-3 text-xs ${data.enabled
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-amber-200 bg-amber-50 text-amber-800'}`;
+        if (banner.textContent !== bannerText || banner.className !== bannerClass) changed = true;
+        banner.textContent = bannerText;
+        banner.className = bannerClass;
+        scenarioStateInitialized = true;
+        if (changed) render();
+      } catch (error) {
+        const banner = document.getElementById('environment-banner');
+        const bannerText = `Cannot connect to the local scenario controller: ${error.message}`;
+        const bannerClass = 'mb-5 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800';
+        let changed = !scenarioStateInitialized ||
+          banner.textContent !== bannerText ||
+          banner.className !== bannerClass;
+        banner.textContent = bannerText;
+        banner.className = bannerClass;
+        scenarios.forEach(group => group.items.forEach(item => {
+          if (item.supported || item.state !== 'unavailable') changed = true;
+          item.supported = false;
+          item.state = 'unavailable';
+        }));
+        scenarioStateInitialized = true;
+        if (changed) render();
+      }
+    }
+
+    async function resetAll() {
+      const active = scenarios.flatMap(group => group.items)
+        .filter(item => item.supported && item.state === 'running');
+      if (active.length === 0) {
+        showToast('No active scenarios to stop');
+        return;
+      }
+      if (!window.confirm('Stop all active scenarios? A pending batch and jobs already accepted by SQS may still be processed.')) {
+        return;
+      }
+
+      try {
+        for (const item of active) await requestScenario(item.id, 'stop');
+        await loadScenarioStates();
+        showToast('Stopped future batches; pending/queued jobs may continue');
+      } catch (error) {
+        showToast(error.message);
+        await loadScenarioStates();
+      }
     }
 
     // Search query listener
@@ -539,9 +544,10 @@
       }, 2000);
     }
 
-    // Initial load
     document.addEventListener('DOMContentLoaded', () => {
       render();
+      loadScenarioStates();
+      setInterval(loadScenarioStates, 2000);
     });
   </script>
 </body>

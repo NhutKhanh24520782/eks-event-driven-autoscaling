@@ -5,3 +5,5 @@ metadata:
 data:
   AWS_REGION: ap-southeast-1
   QUEUE_URL: https://sqs.ap-southeast-1.amazonaws.com/867703356304/jobs-queue
+  CHAOS_ENABLED: "true"
+  CHAOS_ENVIRONMENT: eks-test

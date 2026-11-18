@@ -1,21 +1,24 @@
 # Metrics Collection
 
-`collect-control-loop-latency.md` is currently a placeholder for collecting
-autoscaling control-loop timestamps. The worker currently exports processing
-counters and an in-flight gauge, but no SQS queue-depth metric or T0–T6
-timestamps. The dashboard therefore cannot calculate end-to-end autoscaling
-latency from the existing application metrics.
+The current worker exposes process-local counters and a gauge at `/metrics`:
 
-For current worker metrics and Prometheus setup, see
-[`observability/README.md`](../../observability/README.md). For the planned
-measurement scope, see [`docs/control-loop-latency.md`](../../docs/control-loop-latency.md).
+- `worker_in_flight_jobs`
+- `worker_jobs_processed_total`
+- `worker_jobs_duplicate_total`
+- `worker_jobs_error_total`
 
-## Follow-up work
+The API logs `api_received_at` and `enqueued_at` by `job_id`. The worker logs
+job start, SQS receive count/SentTimestamp when available, redelivery, and
+successful completion timestamps. k6 emits a run-tagged CSV containing request
+metrics and the `enqueue_ack_ms` trend.
 
-- Define observable timestamp sources for job creation, SQS visibility,
-  KEDA polling, replica changes, pod scheduling/readiness, and first
-  successful processing.
-- Use synchronized clocks and identify whether each event comes from client,
-  AWS, Kubernetes, or worker logs.
-- Export histogram/event metrics without unbounded labels such as job IDs.
-- Automate run metadata, calculations, percentiles, and evidence capture.
+The application does not currently export queue depth or a KEDA polling
+timestamp as Prometheus metrics. T2 may therefore be estimated from
+timestamped scaler logs/metrics or reported unavailable; do not infer it from
+the replica change. Kubernetes Pod creation and Ready condition timestamps
+provide T4 and T5.
+
+Use the step-by-step
+[`collect-control-loop-latency.md`](collect-control-loop-latency.md) procedure
+and report limitations with the T0–T6 method in
+[`docs/control-loop-latency.md`](../../docs/control-loop-latency.md).

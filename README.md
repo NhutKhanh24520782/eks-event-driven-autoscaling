@@ -133,6 +133,7 @@ Read Terraform outputs:
 $region = terraform -chdir=infra\envs\dev output -raw region
 $apiImage = terraform -chdir=infra\envs\dev output -raw ecr_api_url
 $workerImage = terraform -chdir=infra\envs\dev output -raw ecr_worker_url
+$frontendImage = "867703356304.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/frontend"
 $registry = $apiImage.Split('/')[0]
 aws ecr get-login-password --region $region |
   docker login --username AWS --password-stdin $registry
@@ -140,6 +141,9 @@ docker build -t "${apiImage}:latest" -f apps\backend\api-service\Dockerfile apps
 docker push "${apiImage}:latest"
 docker build -t "${workerImage}:latest" -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
 docker push "${workerImage}:latest"
+docker build --build-arg NGINX_CONFIG=nginx.eks.conf `
+  -t "${frontendImage}:latest" -f apps\frontend\Dockerfile apps\frontend
+docker push "${frontendImage}:latest"
 ```
 
 The EKS nodes need permission to pull from these ECR repositories. For
@@ -173,8 +177,11 @@ kubectl annotate serviceaccount worker -n app `
   "eks.amazonaws.com/role-arn=$workerRoleArn" --overwrite
 kubectl set image deployment/api-service api="${apiImage}:latest" -n app
 kubectl set image deployment/worker-service worker="${workerImage}:latest" -n app
+# deployment-frontend.yaml already uses frontend:latest; restart to pull its newly pushed image.
+kubectl rollout restart deployment/frontend-service -n app
 kubectl rollout status deployment/api-service -n app
 kubectl rollout status deployment/worker-service -n app
+kubectl rollout status deployment/frontend-service -n app
 kubectl get ingress api-ingress -n app
 ```
 
@@ -240,8 +247,16 @@ The local compose stack uses ElasticMQ instead of AWS SQS:
 docker compose -f docker-compose.local.yml up --build
 ```
 
-API: `http://localhost:3000`; worker health and metrics:
+Frontend: `http://localhost:8181`; API: `http://localhost:3000`; worker health and metrics:
 `http://localhost:3001/health` and `http://localhost:3001/metrics`.
+The Failure Scenarios page can start two bounded local tests: `traffic-spike`
+(up to 20 `POST /jobs` requests) and `sqs-backlog-spike` (up to 12 queued jobs).
+Stop prevents further jobs from being sent; jobs already accepted by SQS may
+still be processed.
+Database, deploy, network, storage, and poison-message scenarios are disabled
+because this Compose stack does not provide safe implementations for them.
+Chaos controls are enabled only by the local Compose configuration and its
+frontend/API ports bind to loopback.
 Send a job with:
 
 ```powershell
@@ -261,8 +276,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/jobs `
    HPA comparison.
 5. Add dashboard panels and alerts for KEDA/HPA state, queue depth, retries,
    DLQ, pod readiness, and latency.
-6. Replace chaos placeholders with opt-in, guarded scripts and an automated
-   workflow that cannot target production by accident.
+6. Add additional scenario implementations only alongside their dependencies,
+   cleanup behavior, bounded limits, and environment guards.
 7. Pin and test Helm chart versions; establish backups and production-grade
    storage/retention for Loki and Prometheus.
 8. Add automated tests, image scanning policy, and immutable image tags.

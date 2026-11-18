@@ -28,6 +28,8 @@ The server listens on port 8081 by default:
 - `GET /metrics`: Prometheus text exposition:
   `worker_in_flight_jobs`, `worker_jobs_processed_total`,
   `worker_jobs_duplicate_total`, and `worker_jobs_error_total`.
+- Worker logs include job start/completion timestamps, SQS receive count,
+  redelivery events, and the request's `client_sent_at` when supplied.
 
 Metrics are process-local. Counters reset on pod restart. Short jobs may not
 be visible in the in-flight gauge at a 30-second Prometheus scrape interval.
