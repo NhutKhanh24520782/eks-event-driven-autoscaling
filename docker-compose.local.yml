@@ -8,15 +8,25 @@ services:
     volumes:
       - ./scripts/local/elasticmq.conf:/opt/docker/conf/elasticmq.conf:ro
 
+  # Frontend dashboard
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8181:80"
+    depends_on:
+      - api-service
+
   # API Service (Phat - Backend)
   # Host port mapped to 3000 (Windows reserves 8000-8100)
   api-service:
     build:
-      context: ./apps/api-service
+      context: ./apps/backend/api-service
       dockerfile: Dockerfile
     container_name: api-service
     ports:
-      - "3000:8080"
+      - "127.0.0.1:3000:8080"
     environment:
       - PORT=8080
       - AWS_REGION=ap-southeast-1
@@ -24,6 +34,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=dummy
       - AWS_ENDPOINT_URL=http://sqs:9324
       - QUEUE_URL=http://sqs:9324/000000000000/jobs-queue
+      - CHAOS_ENABLED=true
+      - CHAOS_ENVIRONMENT=local
     depends_on:
       - sqs
 
@@ -31,7 +43,7 @@ services:
   # Host port mapped to 3001 (Windows reserves 8000-8100)
   worker-service:
     build:
-      context: ./apps/worker-service
+      context: ./apps/backend/worker-service
       dockerfile: Dockerfile
     container_name: worker-service
     ports:

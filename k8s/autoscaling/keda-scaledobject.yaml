@@ -13,7 +13,7 @@ spec:
   triggers:
     - type: aws-sqs-queue
       metadata:
-        queueURL: https://sqs.ap-southeast-1.amazonaws.com/274118253913/jobs-queue
+        queueURL: https://sqs.ap-southeast-1.amazonaws.com/867703356304/jobs-queue
         awsRegion: ap-southeast-1
         queueLength: "5"
         identityOwner: operator

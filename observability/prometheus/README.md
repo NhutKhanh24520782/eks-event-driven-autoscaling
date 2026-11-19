@@ -5,15 +5,14 @@ Prometheus is deployed with the Prometheus Operator through the
 [`prometheus-values.yaml`](../prometheus-values.yaml) configures seven-day
 retention, persistent storage, Grafana, and the Loki datasource.
 
-[`worker-podmonitor.yaml`](worker-podmonitor.yaml) selects worker pods in the
-`app` namespace and scrapes their named `metrics` port at `/metrics`. Apply it
-after installing the chart, which provides the `PodMonitor` CRD. The stack's
-`podMonitorSelectorNilUsesHelmValues: false` setting allows this monitor to be
-selected without release-specific labels.
+The API is scraped by [`api-podmonitor.yaml`](api-podmonitor.yaml). Worker
+metrics use the existing
+[`ServiceMonitor`](../../k8s/config/worker-servicemonitor.yaml) in the `app`
+namespace. Do not install a second worker monitor: duplicate scraping creates
+duplicate worker time series and can inflate throughput aggregates.
 
-Verify the `worker-service` target in **Status → Targets** in Prometheus.
-Available metrics and sources not yet integrated (SQS queue depth and T0–T5
-latency) are documented in the
+Verify both API and worker targets in **Status → Targets** in Prometheus.
+Available metrics and their limitations are documented in the
 [`observability README`](../README.md#metrics-and-limitations).
 
 ## Follow-up work

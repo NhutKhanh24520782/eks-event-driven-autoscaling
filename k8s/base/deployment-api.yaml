@@ -18,7 +18,7 @@ spec:
       terminationGracePeriodSeconds: 20
       containers:
         - name: api
-          image: 274118253913.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/api:latest
+          image: 867703356304.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/api:latest
           imagePullPolicy: Always
           ports:
             - name: http

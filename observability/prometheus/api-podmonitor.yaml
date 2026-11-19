@@ -1,19 +1,20 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: worker-service
+  name: api-service
   namespace: observability
   labels:
-    app.kubernetes.io/name: worker-service
+    app.kubernetes.io/name: api-service
+    release: monitoring
 spec:
   namespaceSelector:
     matchNames:
       - app
   selector:
     matchLabels:
-      app: worker-service
+      app: api-service
   podMetricsEndpoints:
-    - port: metrics
+    - port: http
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s

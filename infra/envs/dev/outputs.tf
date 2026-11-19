@@ -58,6 +58,11 @@ output "ecr_worker_url" {
   value       = module.ecr.repository_urls["worker"]
 }
 
+output "ecr_frontend_url" {
+  description = "ECR repository URL cho frontend service"
+  value       = module.ecr.repository_urls["frontend"]
+}
+
 output "api_role_arn" {
   description = "IAM role ARN để annotate vào service account 'app/api'"
   value       = module.irsa_api.role_arn

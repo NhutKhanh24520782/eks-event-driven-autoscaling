@@ -1,21 +1,22 @@
 # Metrics Collection
 
-`collect-control-loop-latency.md` is currently a placeholder for collecting
-autoscaling control-loop timestamps. The worker currently exports processing
-counters and an in-flight gauge, but no SQS queue-depth metric or T0–T6
-timestamps. The dashboard therefore cannot calculate end-to-end autoscaling
-latency from the existing application metrics.
+Use [`collect-control-loop-latency.sh`](collect-control-loop-latency.sh) to
+capture timestamped API/worker/KEDA logs, SQS attributes, replica samples,
+Pod snapshots, and events. Run k6 separately and use
+[`analyze-control-loop-latency.py`](analyze-control-loop-latency.py) to
+correlate per-job T0/T1/T6 and summarize observable intervals.
 
-For current worker metrics and Prometheus setup, see
-[`observability/README.md`](../../observability/README.md). For the planned
-measurement scope, see [`docs/control-loop-latency.md`](../../docs/control-loop-latency.md).
+The API `/metrics` endpoint exports approximate visible, in-flight, and
+delayed SQS message gauges by queue. The worker `/metrics` endpoint exports
+process-local received/processed/duplicate/error counters, the in-flight
+gauge, and `worker_job_processing_seconds` histogram. The API returns HTTP 503
+if it cannot read SQS queue attributes; Prometheus marks the scrape failed
+instead of receiving a fabricated zero.
 
-## Follow-up work
-
-- Define observable timestamp sources for job creation, SQS visibility,
-  KEDA polling, replica changes, pod scheduling/readiness, and first
-  successful processing.
-- Use synchronized clocks and identify whether each event comes from client,
-  AWS, Kubernetes, or worker logs.
-- Export histogram/event metrics without unbounded labels such as job IDs.
-- Automate run metadata, calculations, percentiles, and evidence capture.
+KEDA T2 is not guaranteed to appear in default operator logs. Record it only
+from an actual timestamped qualifying observation; otherwise leave it
+unavailable. The collector samples desired/ready replicas once per second
+(T3 is observed within that resolution); Pod creation and Ready timestamps
+come from the Kubernetes API. See
+[`docs/control-loop-latency.md`](../../docs/control-loop-latency.md) for
+formulas and cross-clock limitations.

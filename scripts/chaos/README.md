@@ -1,21 +1,25 @@
 # Chaos Experiments
 
-This directory contains:
+These are controlled development-cluster procedures, not production
+operations:
 
-- `pod-failure.sh` and `node-failure.sh`: placeholder shell scripts, not
-  executable test procedures yet.
-- `az-failure.md`: a high-level AZ failure scenario outline.
+| File | Scenario | Safeguards |
+| --- | --- | --- |
+| [`pod-failure.sh`](pod-failure.sh) | Submit a long-running job, identify the worker processing it, delete that Pod, then verify SQS redelivery and successful completion | Requires `CHAOS_ENVIRONMENT=dev`, explicit context/API/queue/region, empty queue, actual visibility-timeout preflight, typed confirmation, and evidence output |
+| [`node-failure.sh`](node-failure.sh) | Cordon and drain one named node, evicting only worker Pods, then verify Ready worker capacity outside the target AZ | Guarded, but not approved for execution until the team agrees isolation, stop conditions, rollback, and cost limits |
+| [`az-failure.md`](az-failure.md) | Multi-node AZ capacity-loss planning and optional separately approved AWS network-isolation experiment | Planning only; no Node/AZ failure is authorized by the current sequence |
 
-Do not treat the shell scripts as ready-to-run tools. Before implementing or
-running fault injection, require an explicit development cluster and namespace,
-check the current kube context, bound the blast radius, capture a baseline,
-and define an abort/rollback procedure. Never run against production.
+The scripts require Bash, `kubectl`, and an explicitly selected development
+context. The Pod test also requires AWS CLI, `curl`, access to the development
+API, and the same quiet test queue used by the API.
+Review each script's `--help` and the runbook before execution. The scripts
+make Kubernetes changes and are intentionally interactive; do not remove the
+confirmation or point them at production.
 
-## Follow-up work
+Collect a baseline and define abort thresholds before each test. Keep an
+operator available to uncordon nodes, watch worker recovery, and stop load
+generation. Save sanitized run IDs, UTC times, Pod placement, queue state,
+logs, and recovery measurements under `docs/evidence/`.
 
-- Implement safe pod and node tests with target/context confirmation and
-  timeouts.
-- Define the AZ test as a controlled simulation, not an instruction to disrupt
-  AWS infrastructure indiscriminately.
-- Capture pod placement, queue depth, retries, throughput, and recovery time.
-- Require reviewer approval and preserve evidence for every run.
+For latency definitions and timestamp collection, see
+[`scripts/metrics/collect-control-loop-latency.md`](../metrics/collect-control-loop-latency.md).

@@ -15,6 +15,15 @@ Returns service information and whether `QUEUE_URL` is configured.
 Returns HTTP 200 while the API process is running. Kubernetes uses this route
 for readiness and liveness probes. It does not verify connectivity to SQS.
 
+### `GET /metrics`
+
+Returns Prometheus text-format gauges for approximate visible, in-flight, and
+delayed messages in the configured SQS queue. Each API replica queries
+`GetQueueAttributes` when scraped; queue counts are duplicated per replica,
+so PromQL should use `max()` rather than `sum()`. If SQS cannot be queried, the
+endpoint returns HTTP 503 and logs the error instead of reporting a false
+zero. The EKS API role needs `sqs:GetQueueAttributes` for this endpoint.
+
 ### `POST /jobs`
 
 Send a JSON object:
@@ -34,6 +43,10 @@ processing time. `shouldFail` requests a simulated worker failure for retry
 testing. A successful SQS send returns HTTP 202 with the job and message IDs.
 Invalid JSON returns 400, an unset queue returns 500, and an SQS send failure
 returns 503.
+
+The response and `[SQS SENT]` log include `api_received_at` and `enqueued_at`
+UTC timestamps. A caller may include `client_sent_at` for load-test
+correlation; cross-host latency calculations require synchronized clocks.
 
 Example:
 
@@ -59,7 +72,7 @@ IRSA.
 ## Run and build
 
 ```powershell
-cd apps\api-service
+cd apps\backend\api-service
 npm install
 npm start
 ```
@@ -67,15 +80,13 @@ npm start
 Build from the repository root:
 
 ```powershell
-docker build -t api-service:dev -f apps\api-service\Dockerfile apps\api-service
+docker build -t api-service:dev -f apps\backend\api-service\Dockerfile apps\backend\api-service
 ```
 
-## Current limitations / next steps
+## Current limitations
 
 - `/health` is a process-health check only; add a separate dependency/readiness
   check if SQS connectivity should affect traffic routing.
-- The API does not expose Prometheus request, error, or publish-latency
-  metrics.
 - Add payload size and `processTimeMs` validation, API tests, and an explicit
   versioned message contract.
 - Replace mutable `latest` deployment tags with immutable release identifiers.
