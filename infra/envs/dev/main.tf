@@ -455,13 +455,13 @@ module "ecr" {
 # ---------------------------------------------------------------------------
 # 10. Kubernetes Namespace "app" – tạo sẵn để K8s manifest có thể deploy vào
 # ---------------------------------------------------------------------------
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = "app"
-    labels = {
-      "managed-by" = "terraform"
-    }
-  }
+# resource "kubernetes_namespace" "app" {
+#   metadata {
+#     name = "app"
+#     labels = {
+#       "managed-by" = "terraform"
+#     }
+#   }
 
-  depends_on = [module.eks]
-}
+#   depends_on = [module.eks]
+# }
