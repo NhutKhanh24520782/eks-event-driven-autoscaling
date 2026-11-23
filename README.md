@@ -68,6 +68,7 @@ Follow this step-by-step guide to deploy the entire project onto Amazon EKS from
 Authenticate with your AWS account and set required environment variables.
 
 #### Git Bash
+
 ```bash
 aws sts get-caller-identity
 export AWS_REGION="ap-southeast-1"
@@ -80,6 +81,7 @@ echo "ECR Registry: $ECR_REGISTRY"
 ```
 
 #### PowerShell
+
 ```powershell
 aws sts get-caller-identity
 $env:AWS_REGION = "ap-southeast-1"
@@ -95,9 +97,51 @@ Write-Host "ECR Registry: $env:ECR_REGISTRY"
 
 ### Step 2: Provision Infrastructure (Terraform)
 
-Prepare `infra/envs/dev/terraform.tfvars` (copy from `terraform.tfvars.example` if not already created), then initialize and apply Terraform.
+On the **first run**, initialize the bootstrap resources to create the S3 bucket that stores the Terraform remote state for the current AWS account. Bootstrap only needs to be run once; verify that you are using the intended AWS account before continuing.
 
 #### Git Bash
+
+```bash
+aws sts get-caller-identity
+
+# Initialize bootstrap
+terraform -chdir=infra/bootstrap init
+terraform -chdir=infra/bootstrap plan
+terraform -chdir=infra/bootstrap apply
+
+# Get the remote-state S3 bucket name
+terraform -chdir=infra/bootstrap output state_bucket_name
+```
+
+#### PowerShell
+
+```powershell
+aws sts get-caller-identity
+
+# Initialize bootstrap
+terraform -chdir=infra\bootstrap init
+terraform -chdir=infra\bootstrap plan
+terraform -chdir=infra\bootstrap apply
+
+# Get the remote-state S3 bucket name
+terraform -chdir=infra\bootstrap output state_bucket_name
+```
+
+The bucket name follows this format: `multiaz-autoscaling-tfstate-<AWS_ACCOUNT_ID>`. Compare the output with the backend configuration in `infra/envs/dev/versions.tf`; if you are using a new AWS account or a different project/bucket name, update the configuration:
+
+```hcl
+backend "s3" {
+  bucket  = "<STATE_BUCKET_NAME>"
+  key     = "envs/dev/terraform.tfstate"
+  region  = "ap-southeast-1"
+  encrypt = true
+}
+```
+
+After bootstrap completes, prepare `infra/envs/dev/terraform.tfvars` (copy it from `terraform.tfvars.example` if it does not exist), then initialize and apply the dev environment.
+
+#### Git Bash
+
 ```bash
 cd infra/envs/dev
 terraform init
@@ -107,6 +151,7 @@ cd ../../../
 ```
 
 #### PowerShell
+
 ```powershell
 cd infra\envs\dev
 terraform init
@@ -126,6 +171,7 @@ cd ..\..\..
 Update `kubeconfig` to connect `kubectl` to EKS, then apply the `gp3` StorageClass for Persistent Volumes (Prometheus/Grafana).
 
 #### Git Bash
+
 ```bash
 aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
 kubectl get nodes
@@ -133,6 +179,7 @@ kubectl apply -f k8s/storage/ebs-gp3.yaml
 ```
 
 #### PowerShell
+
 ```powershell
 aws eks update-kubeconfig --region $env:AWS_REGION --name $env:CLUSTER_NAME
 kubectl get nodes
@@ -146,6 +193,7 @@ kubectl apply -f k8s\storage\ebs-gp3.yaml
 Log in to Amazon ECR, then build and push API, Worker, and Frontend images.
 
 #### Git Bash
+
 ```bash
 # Log in to ECR
 aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
@@ -164,6 +212,7 @@ docker push ${ECR_REGISTRY}/multiaz-autoscaling/frontend:latest
 ```
 
 #### PowerShell
+
 ```powershell
 # Log in to ECR
 aws ecr get-login-password --region $env:AWS_REGION | docker login --username AWS --password-stdin $env:ECR_REGISTRY
@@ -188,6 +237,7 @@ docker push "$($env:ECR_REGISTRY)/multiaz-autoscaling/frontend:latest"
 Sync the SQS Queue URL into the ConfigMap, apply Kustomize manifests, annotate IAM roles onto ServiceAccounts, and restart pods.
 
 #### Git Bash
+
 ```bash
 # 1. Sync Queue URL into ConfigMap
 export QUEUE_URL=$(terraform -chdir=infra/envs/dev output -raw queue_url)
@@ -210,6 +260,7 @@ kubectl rollout status deployment/frontend-service -n app
 ```
 
 #### PowerShell
+
 ```powershell
 # 1. Sync Queue URL into ConfigMap
 $queueUrl = terraform -chdir=infra\envs\dev output -raw queue_url
@@ -238,6 +289,7 @@ kubectl rollout status deployment/frontend-service -n app
 Install Prometheus & Grafana with Helm, create Grafana credentials, apply Worker ServiceMonitor, and import the master dashboard.
 
 #### Git Bash
+
 ```bash
 # 1. Add Helm repo
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -261,6 +313,7 @@ kubectl apply -f k8s/config/grafana-dashboard-master.yaml
 ```
 
 #### PowerShell
+
 ```powershell
 # 1. Add Helm repo
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -288,6 +341,7 @@ kubectl apply -f k8s\config\grafana-dashboard-master.yaml
 ### Step 7: Verification & Load Testing
 
 #### 7.1 Verify Pods & Ingress
+
 ```bash
 kubectl get pods -n app
 kubectl get pods -n observability
@@ -295,11 +349,14 @@ kubectl get ingress api-ingress -n app
 ```
 
 #### 7.2 Access Services via Port-Forwarding (Local Testing)
+
 In a separate terminal window:
+
 * **Frontend Web:** `kubectl port-forward svc/frontend-service 8080:80 -n app` -> Open `http://localhost:8080`
 * **Grafana Dashboard:** `kubectl port-forward svc/monitoring-grafana 3000:80 -n observability` -> Open `http://localhost:3000` (`admin` / `admin123`)
 
 #### 7.3 Run k6 Load Test
+
 * **Git Bash:**
   ```bash
   export TARGET_URL="http://localhost:8080"
@@ -313,7 +370,7 @@ In a separate terminal window:
 
 ---
 
-### Step 8: Autoscaling Options (Optional)
+### Step 8: Autoscaling Options
 
 * **KEDA / SQS (Recommended Event-Driven):** Set `install_keda = true` in `infra/envs/dev/terraform.tfvars`, run `terraform apply`. Then update `queueURL` in `k8s/autoscaling/keda-scaledobject.yaml` and apply:
   ```bash
@@ -331,6 +388,7 @@ In a separate terminal window:
 To avoid AWS `DependencyViolation` errors during VPC deletion, always clean up Kubernetes Ingress (ALB) and storage before running `terraform destroy`:
 
 #### Git Bash
+
 ```bash
 # 1. Delete Ingress to remove ALB
 kubectl delete ingress api-ingress -n app
@@ -348,6 +406,7 @@ cd ../../../
 ```
 
 #### PowerShell
+
 ```powershell
 # 1. Delete Ingress to remove ALB
 kubectl delete ingress api-ingress -n app
@@ -363,7 +422,6 @@ cd infra\envs\dev
 terraform destroy -auto-approve
 cd ..\..\..
 ```
-
 
 ## Local development
 
@@ -411,4 +469,4 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/jobs `
 ## Documentation
 
 See each top-level directory README for subsystem-specific configuration and
-the [`docs/`](docs/README.md) index for experiment and fault-tolerance notes.
+the [`docs/`](docs/README.md) index for experiment and fault-tolerance notes
