@@ -12,7 +12,7 @@ All parameters can be configured via CLI flags or environment variables, allowin
 |---|---|---|
 | `smoke` | 1 VU for 2s | Quick sanity check to verify API connectivity and SQS reachability |
 | `baseline` | 1 VU ramp (5s), hold (30s), ramp down (5s) | Establishes the baseline single-worker latency without queue backlog or scaling |
-| `load` | Ramp to 10 VUs (30s), hold 60s, ramp down (30s) | Tests bounded event-driven autoscaling; triggers KEDA threshold (`queueLength=5`) |
+| `load` | 1 VU baseline (30s), ramp to 10 (60s), hold (120s), ramp down to 0 (30s) | 4-minute bounded event-driven autoscaling run |
 | `spike` | 1 VU to 20 VUs in 5s, hold 30s, drop to 1 VU | Tests rapid backlog accumulation, scale-out responsiveness, and recovery |
 | `stress` | Ramp to 20 VUs (20s), hold 40s at 20 VUs, ramp to 30 VUs (60s) | Validates upper capacity limits (`maxReplicaCount=10`) and multi-AZ pod balancing |
 | `soak` | 3–5 VUs sustained for 3–10 minutes | Validates system memory stability, connection pools, and absence of leaks |
@@ -33,8 +33,8 @@ All variables can be passed as `-e NAME=value` to `k6 run`:
 | `PEAK_VUS` | Integer (1–50) | `10` | Peak concurrency for load & stress runs |
 | `SPIKE_VUS` | Integer (1–50) | `20` | Peak concurrency for spike profile |
 | `BASELINE_DURATION` | Duration string (`30s`, `1m`) | `30s` | Steady-state duration for baseline |
-| `RAMP_UP_DURATION` | Duration string | `30s` | Ramp-up time to peak concurrency |
-| `HOLD_DURATION` | Duration string | `60s` | Hold duration at peak concurrency |
+| `RAMP_UP_DURATION` | Duration string | `60s` | Ramp-up time to peak concurrency |
+| `HOLD_DURATION` | Duration string | `120s` | Hold duration at peak concurrency |
 | `RAMP_DOWN_DURATION` | Duration string | `30s` | Ramp-down duration back to 0 VUs |
 | `SOAK_DURATION` | Duration string | `3m` | Sustained duration for soak profile |
 | `REQUEST_PAUSE_SECONDS`| Float (0–60) | `1.0` (`0.1` on smoke)| Inter-request sleep per VU |
@@ -88,9 +88,11 @@ k6 run \
   -e RUN_ID="$RUN_ID" \
   -e K6_PROFILE=load \
   -e PEAK_VUS=10 \
-  -e RAMP_UP_DURATION=30s \
-  -e HOLD_DURATION=60s \
+  -e BASELINE_DURATION=30s \
+  -e RAMP_UP_DURATION=60s \
+  -e HOLD_DURATION=120s \
   -e RAMP_DOWN_DURATION=30s \
+  -e REQUEST_PAUSE_SECONDS=1 \
   -e PROCESS_TIME_MS=1000 \
   --out "csv=docs/evidence/$RUN_ID/k6.csv" \
   scripts/load-test/k6-workload.js
