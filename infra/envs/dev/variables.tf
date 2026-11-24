@@ -13,7 +13,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Phiên bản Kubernetes của EKS cluster (khuyến nghị dùng bản mới nhất được AWS hỗ trợ)"
   type        = string
-  default     = "1.30"
+  default     = "1.32"
 }
 
 variable "azs" {
@@ -77,7 +77,7 @@ variable "alb_controller_version" {
   description = "Phiên bản Helm chart aws-load-balancer-controller (ghim để tránh breaking change)"
   type        = string
   # 1.8.x là stable tại thời điểm viết; kiểm tra https://github.com/aws/eks-charts/releases
-  default     = "1.8.3"
+  default = "1.8.3"
 }
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ variable "keda_chart_version" {
   description = "Phiên bản Helm chart KEDA (chỉ dùng khi install_keda = true)"
   type        = string
   # 2.15.x là stable tại thời điểm viết; kiểm tra https://github.com/kedacore/charts/releases
-  default     = "2.15.1"
+  default = "2.15.1"
 }
 
 # ---------------------------------------------------------------------------
@@ -129,14 +129,14 @@ variable "ecr_name_prefix" {
 # ---------------------------------------------------------------------------
 # Budget
 # ---------------------------------------------------------------------------
-variable "monthly_budget_usd" {
-  description = "Ngưỡng ngân sách tháng (USD) để gửi cảnh báo email"
-  type        = string
-  default     = "50"
-}
+# variable "monthly_budget_usd" {
+#   description = "Ngưỡng ngân sách tháng (USD) để gửi cảnh báo email"
+#   type        = string
+#   default     = "50"
+# }
 
-variable "alert_emails" {
-  description = "Danh sách email nhận cảnh báo chi phí (bắt buộc điền)"
-  type        = list(string)
-  default     = []
-}
+# variable "alert_emails" {
+#   description = "Danh sách email nhận cảnh báo chi phí (bắt buộc điền)"
+#   type        = list(string)
+#   default     = []
+# }

@@ -178,9 +178,14 @@ reports/
 *.csv
 *.json
 
-# But keep specific project configuration JSON if needed
-!package-lock.json
+# Keep load-test evidence CSVs versionable
+!docs/evidence/*.csv
 
+# But keep specific project configuration JSON if needed
+!package.json
+!package-lock.json
+!worker-monitoring.json
+!eks-event-driven-autoscaling-master.json
 
 # ==========================================
 # Secrets / Credentials

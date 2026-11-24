@@ -8,15 +8,25 @@ services:
     volumes:
       - ./scripts/local/elasticmq.conf:/opt/docker/conf/elasticmq.conf:ro
 
+  # Frontend dashboard
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8181:80"
+    depends_on:
+      - api-service
+
   # API Service (Phat - Backend)
   # Host port mapped to 3000 (Windows reserves 8000-8100)
   api-service:
     build:
-      context: ./apps/api-service
+      context: ./apps/backend/api-service
       dockerfile: Dockerfile
     container_name: api-service
     ports:
-      - "3000:8080"
+      - "127.0.0.1:3000:8080"
     environment:
       - PORT=8080
       - AWS_REGION=ap-southeast-1
@@ -24,6 +34,8 @@ services:
       - AWS_SECRET_ACCESS_KEY=dummy
       - AWS_ENDPOINT_URL=http://sqs:9324
       - QUEUE_URL=http://sqs:9324/000000000000/jobs-queue
+      - CHAOS_ENABLED=true
+      - CHAOS_ENVIRONMENT=local
     depends_on:
       - sqs
 
@@ -31,7 +43,7 @@ services:
   # Host port mapped to 3001 (Windows reserves 8000-8100)
   worker-service:
     build:
-      context: ./apps/worker-service
+      context: ./apps/backend/worker-service
       dockerfile: Dockerfile
     container_name: worker-service
     ports:
@@ -47,3 +59,32 @@ services:
       - WORKER_PROCESS_TIME_MS=1000
     depends_on:
       - sqs
+
+  # Prometheus for scraping metrics locally (every 2s)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus-local
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus-local.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - worker-service
+
+  # Grafana for visualizing Worker & SQS metrics
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana-local
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus

@@ -22,7 +22,7 @@ spec:
       terminationGracePeriodSeconds: 55
       containers:
         - name: worker
-          image: 274118253913.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/worker:latest
+          image: 867703356304.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/worker:latest
           imagePullPolicy: Always
           ports:
             - name: metrics

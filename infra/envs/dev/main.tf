@@ -258,35 +258,20 @@ resource "helm_release" "alb_controller" {
   version    = var.alb_controller_version # "1.8.3"
   namespace  = "kube-system"
 
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-
-  set {
-    name  = "region"
-    value = var.region
-  }
-
-  set {
-    name  = "vpcId"
-    value = module.vpc.vpc_id
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.alb_controller.arn
-  }
+  values = [
+    yamlencode({
+      clusterName = module.eks.cluster_name
+      region      = var.region
+      vpcId       = module.vpc.vpc_id
+      serviceAccount = {
+        create = true
+        name   = "aws-load-balancer-controller"
+        annotations = {
+          "eks.amazonaws.com/role-arn" = aws_iam_role.alb_controller.arn
+        }
+      }
+    })
+  ]
 
   # Chờ tất cả pod của controller Ready trước khi terraform xem là xong
   wait    = true
@@ -420,10 +405,15 @@ resource "helm_release" "keda" {
 
   create_namespace = true
 
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.irsa_keda.role_arn
-  }
+  values = [
+    yamlencode({
+      serviceAccount = {
+        annotations = {
+          "eks.amazonaws.com/role-arn" = module.irsa_keda.role_arn
+        }
+      }
+    })
+  ]
 
   wait    = true
   timeout = 300
@@ -438,30 +428,30 @@ module "ecr" {
   source = "../../modules/ecr"
 
   name_prefix      = var.ecr_name_prefix
-  repository_names = ["api", "worker"]
+  repository_names = ["api", "worker", "frontend"]
 }
 
 # ---------------------------------------------------------------------------
 # 9. AWS Budget
 # ---------------------------------------------------------------------------
-module "budget" {
-  source = "../../modules/budget"
+# module "budget" {
+#   source = "../../modules/budget"
 
-  monthly_budget_usd = var.monthly_budget_usd
-  alert_emails       = var.alert_emails
-  alert_thresholds   = [50, 80, 100]
-}
+#   monthly_budget_usd = var.monthly_budget_usd
+#   alert_emails       = var.alert_emails
+#   alert_thresholds   = [50, 80, 100]
+# }
 
 # ---------------------------------------------------------------------------
 # 10. Kubernetes Namespace "app" – tạo sẵn để K8s manifest có thể deploy vào
 # ---------------------------------------------------------------------------
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = "app"
-    labels = {
-      "managed-by" = "terraform"
-    }
-  }
+# resource "kubernetes_namespace" "app" {
+#   metadata {
+#     name = "app"
+#     labels = {
+#       "managed-by" = "terraform"
+#     }
+#   }
 
-  depends_on = [module.eks]
-}
+#   depends_on = [module.eks]
+# }

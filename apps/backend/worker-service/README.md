@@ -27,10 +27,15 @@ The server listens on port 8081 by default:
 - `GET /health` and `/healthz`: process health and local counters.
 - `GET /metrics`: Prometheus text exposition:
   `worker_in_flight_jobs`, `worker_jobs_processed_total`,
-  `worker_jobs_duplicate_total`, and `worker_jobs_error_total`.
+  `worker_jobs_received_total`, `worker_jobs_duplicate_total`,
+  `worker_jobs_error_total`, and `worker_job_processing_seconds` histogram.
+- Worker logs include job start/completion timestamps, SQS receive count,
+  redelivery events, and the request's `client_sent_at` when supplied.
 
 Metrics are process-local. Counters reset on pod restart. Short jobs may not
 be visible in the in-flight gauge at a 30-second Prometheus scrape interval.
+The processing histogram measures each completed success/failure attempt; it
+does not include SQS queue wait, scheduling, Pod startup, or visibility delay.
 
 ## Configuration
 
@@ -48,7 +53,7 @@ be visible in the in-flight gauge at a 30-second Prometheus scrape interval.
 ## Run and build
 
 ```powershell
-cd apps\worker-service
+cd apps\backend\worker-service
 npm install
 npm start
 ```
@@ -56,7 +61,7 @@ npm start
 Build from the repository root:
 
 ```powershell
-docker build -t worker-service:dev -f apps\worker-service\Dockerfile apps\worker-service
+docker build -t worker-service:dev -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
 ```
 
 In EKS, verify the pod uses the `worker` service account and that
@@ -70,6 +75,4 @@ the node-group role as a substitute.
   SQS visibility timeout.
 - Validate malformed payloads and processing-time ranges with a documented
   poison-message policy.
-- Add a processing-duration histogram, receive/retry counters, and explicit
-  termination tests.
 - Add a bounded CPU-intensive test mode if comparing against CPU HPA.

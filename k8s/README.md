@@ -78,6 +78,20 @@ kubectl get scaledobject,hpa -n app
 kubectl describe scaledobject worker-scaledobject -n app
 ```
 
+## EKS Chaos scenarios
+
+The API enables the two bounded UI scenarios in EKS only when
+`CHAOS_ENABLED=true`, `CHAOS_ENVIRONMENT=eks-test`, and `QUEUE_URL` is an AWS
+SQS URL in `AWS_REGION` (with no custom `AWS_ENDPOINT_URL`). Use a dedicated
+non-production queue. The scenarios send at most 20 and 12 jobs respectively.
+
+Before enabling them, restrict the internet-facing ALB to trusted source
+CIDRs in `base/ingress.yaml`; this applies to the whole ALB, including the
+frontend. The API and worker use their queue-scoped IRSA roles. KEDA must also
+use the `keda-operator` IRSA role with `sqs:GetQueueAttributes` on that queue.
+Do not run a scenario unless the queue is empty and the ScaledObject reports
+`Ready=True`; otherwise jobs may accumulate without autoscaling.
+
 ### CPU HPA baseline
 
 Do not create the KEDA ScaledObject while the baseline HPA is managing the

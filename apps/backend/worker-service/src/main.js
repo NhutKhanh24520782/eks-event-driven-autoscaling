@@ -13,6 +13,7 @@
 
 require('dotenv').config();
 const http = require('http');
+const { performance } = require('node:perf_hooks');
 const os = require('os');
 const {
   SQSClient,
@@ -65,8 +66,26 @@ const metrics = {
   totalProcessed: 0,
   totalDuplicates: 0,
   totalErrors: 0,
+  processingDurationSecondsCount: 0,
+  processingDurationSecondsSum: 0,
+  processingDurationSecondsBuckets: Object.fromEntries(
+    [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60].map(bound => [bound, 0])
+  ),
   startTime: new Date().toISOString()
 };
+const processingDurationBucketBounds = Object.keys(metrics.processingDurationSecondsBuckets)
+  .map(Number)
+  .sort((left, right) => left - right);
+
+function observeProcessingDuration(durationSeconds) {
+  metrics.processingDurationSecondsCount++;
+  metrics.processingDurationSecondsSum += durationSeconds;
+  for (const bound of processingDurationBucketBounds) {
+    if (durationSeconds <= bound) {
+      metrics.processingDurationSecondsBuckets[bound]++;
+    }
+  }
+}
 
 // ── Idempotency: In-Memory Deduplication Cache with TTL ──
 // SQS provides at-least-once delivery; duplicates can occur upon retry or network partition.
@@ -127,10 +146,44 @@ async function processSingleMessage(message) {
   }
 
   const jobId = jobData.job_id || jobData.jobId || messageId;
+  const clientSentAt = jobData.client_sent_at || 'not_provided';
+  const sqsSentAt = (message.Attributes && message.Attributes.SentTimestamp) || 'unknown';
   const processTimeMs = typeof jobData.processTimeMs === 'number'
     ? jobData.processTimeMs
     : DEFAULT_PROCESS_TIME_MS;
   const shouldFail = !!jobData.shouldFail;
+  const simulateCrash = Boolean(
+    jobData.simulateCrash ||
+    (jobData.payload && jobData.payload.simulateCrash) ||
+    jobData.action === 'crash'
+  );
+  const gracefulDrain = Boolean(
+    jobData.gracefulDrain ||
+    (jobData.payload && jobData.payload.gracefulDrain) ||
+    jobData.action === 'graceful-drain'
+  );
+
+  // Chaos Injection: Immediate Process Termination (Pod Crash simulation)
+  if (simulateCrash) {
+    console.error(
+      `[WORKER ${WORKER_ID}] [CHAOS CRASH INJECTED] Received simulated crash for job_id=${jobId} ` +
+      `(receive_count=${receiveCount}). Terminating worker process with exit code 1 immediately! ` +
+      `Message remains in SQS for visibility redelivery recovery.`
+    );
+    // Kubernetes will detect non-zero exit code, increment container restarts, and restart the Pod.
+    process.exit(1);
+  }
+
+  // Chaos Injection: Graceful Drain Simulation
+  if (gracefulDrain) {
+    console.log(
+      `[WORKER ${WORKER_ID}] [CHAOS DRAIN INJECTED] Received graceful drain instruction for job_id=${jobId}. ` +
+      `Deleting trigger message and initiating graceful shutdown...`
+    );
+    await deleteMessage(receiptHandle, messageId);
+    initiateGracefulShutdown('CHAOS_GRACEFUL_DRAIN');
+    return;
+  }
 
   // 1. Idempotency Check (Duplicate message handling)
   if (deduplicationCache.isDuplicate(jobId)) {
@@ -154,9 +207,11 @@ async function processSingleMessage(message) {
 
   // 3. Process the job
   const jobStartTime = Date.now();
+  const jobStartMonotonicTime = performance.now();
   console.log(
     `[WORKER ${WORKER_ID}] [JOB START] job_id=${jobId} message_id=${messageId} ` +
     `receive_count=${receiveCount} process_time_ms=${processTimeMs} ` +
+    `client_sent_at=${clientSentAt} sqs_sent_timestamp=${sqsSentAt} ` +
     `timestamp=${new Date(jobStartTime).toISOString()}`
   );
 
@@ -174,18 +229,20 @@ async function processSingleMessage(message) {
     });
 
     const durationMs = Date.now() - jobStartTime;
+    observeProcessingDuration((performance.now() - jobStartMonotonicTime) / 1000);
     metrics.totalProcessed++;
     deduplicationCache.record(jobId);
 
     console.log(
       `[WORKER ${WORKER_ID}] [JOB SUCCESS] job_id=${jobId} duration_ms=${durationMs} ` +
-      `total_processed=${metrics.totalProcessed}`
+      `completed_at=${new Date().toISOString()} total_processed=${metrics.totalProcessed}`
     );
 
     // 4. Delete successfully processed message from SQS
     await deleteMessage(receiptHandle, messageId);
 
   } catch (error) {
+    observeProcessingDuration((performance.now() - jobStartMonotonicTime) / 1000);
     metrics.totalErrors++;
     console.error(
       `[WORKER ${WORKER_ID}] [JOB FAILURE] job_id=${jobId} receive_count=${receiveCount} ` +
@@ -290,6 +347,9 @@ const healthServer = http.createServer((req, res) => {
       `# HELP worker_in_flight_jobs Current in-flight jobs being processed`,
       `# TYPE worker_in_flight_jobs gauge`,
       `worker_in_flight_jobs ${inFlightJobs}`,
+      `# HELP worker_jobs_received_total Total SQS messages received by this worker`,
+      `# TYPE worker_jobs_received_total counter`,
+      `worker_jobs_received_total ${metrics.totalReceived}`,
       `# HELP worker_jobs_processed_total Total jobs successfully processed`,
       `# TYPE worker_jobs_processed_total counter`,
       `worker_jobs_processed_total ${metrics.totalProcessed}`,
@@ -298,7 +358,15 @@ const healthServer = http.createServer((req, res) => {
       `worker_jobs_duplicate_total ${metrics.totalDuplicates}`,
       `# HELP worker_jobs_error_total Total jobs failed`,
       `# TYPE worker_jobs_error_total counter`,
-      `worker_jobs_error_total ${metrics.totalErrors}`
+      `worker_jobs_error_total ${metrics.totalErrors}`,
+      `# HELP worker_job_processing_seconds Time spent processing a job attempt, including failed attempts`,
+      `# TYPE worker_job_processing_seconds histogram`,
+      ...processingDurationBucketBounds.map(bound =>
+        `worker_job_processing_seconds_bucket{le="${bound}"} ${metrics.processingDurationSecondsBuckets[bound]}`
+      ),
+      `worker_job_processing_seconds_bucket{le="+Inf"} ${metrics.processingDurationSecondsCount}`,
+      `worker_job_processing_seconds_sum ${metrics.processingDurationSecondsSum}`,
+      `worker_job_processing_seconds_count ${metrics.processingDurationSecondsCount}`
     ].join('\n');
     res.end(output);
     return;

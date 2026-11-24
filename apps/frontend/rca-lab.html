@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EKS Autoscaling & Chaos Test Center</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brandBlue: '#2563eb',
+            brandIndigo: '#4f46e5',
+            brandPurple: '#7c3aed',
+            brandEmerald: '#059669',
+            brandRose: '#e11d48',
+            brandAmber: '#d97706',
+            brandTeal: '#0d9488',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .pulse-dot {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulseDot 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulseDot {
+      to { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0); }
+    }
+
+    .pulse-running {
+      animation: pulseBorder 1.5s infinite;
+    }
+    @keyframes pulseBorder {
+      0%, 100% { border-color: #3b82f6; }
+      50% { border-color: #93c5fd; }
+    }
+
+    /* Custom Scrollbar for Terminal */
+    #log-stream::-webkit-scrollbar {
+      width: 6px;
+    }
+    #log-stream::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    #log-stream::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#f1f5f9] text-[#0f172a] font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+
+  <!-- Top Navbar Header (Clean, Light Theme) -->
+  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40 px-4 sm:px-8 py-3.5 shadow-sm transition-all">
+    <div class="max-w-[1440px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">EKS Autoscaling & Chaos Test Center</h1>
+            <span id="env-badge" class="px-2 py-0.5 rounded-full text-[10.5px] font-bold tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block pulse-dot"></span>
+              <span>EKS READY</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 font-medium">Bắn tải trực tiếp 1-click & quan sát biểu đồ biến đổi theo thời gian thực trên Grafana</p>
+        </div>
+      </div>
+
+      <!-- Controls & Links -->
+      <div class="flex items-center space-x-3">
+        <div class="hidden md:flex items-center text-xs font-mono text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg">
+          <span class="mr-1 text-slate-400">Grafana:</span>
+          <span class="font-semibold text-slate-700">http://localhost:3000</span>
+        </div>
+
+        <a href="http://localhost:3000/d/eks-autoscaling-master/9c5a595?orgId=1&refresh=5s" target="_blank" rel="noreferrer"
+          class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold shadow-sm shadow-amber-500/20 transition-all">
+          <span>📊 Mở Grafana Dashboard</span>
+        </a>
+
+        <button onclick="stopAllTests()"
+          class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 text-xs font-bold shadow-sm transition-all">
+          <span>🛑 Dừng Tất Cả</span>
+        </button>
+
+        <span class="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg hidden sm:inline-block">
+          <span id="clock">--:--:--</span>
+        </span>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-[1440px] mx-auto px-4 sm:px-8 py-6 space-y-6">
+
+    <!-- Quick Info Banner (Light Blue/Cyan Alert) -->
+    <div id="notice-banner" class="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 p-3.5 sm:p-4 text-xs text-blue-900 shadow-sm flex items-center justify-between gap-3">
+      <div class="flex items-center space-x-2.5">
+        <span class="text-lg">🎯</span>
+        <span class="font-medium leading-relaxed">
+          <strong>Chế độ Bắn Tải Trực Tiếp Sẵn Sàng:</strong> Chọn một kịch bản bên dưới và bấm nút để hệ thống tự động phát tải HTTP / SQS. KEDA sẽ tự động tính toán queue depth và scale Pods, quan sát ngay trên Grafana!
+        </span>
+      </div>
+      <button onclick="document.getElementById('notice-banner').classList.add('hidden')" class="text-blue-500 hover:text-blue-800 font-bold px-2 py-1 rounded">✕</button>
+    </div>
+
+    <!-- Section 1: Thống Kê Thời Gian Thực (7 Live Gauges) -->
+    <section>
+      <div class="flex items-center justify-between mb-2.5">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm">📈</span>
+          <h2 class="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700">THỐNG KÊ THỜI GIAN THỰC (LIVE TELEMETRY & GAUGES)</h2>
+        </div>
+        <span class="text-[11px] font-medium text-slate-400">Tự động làm mới mỗi 1.5s</span>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        
+        <!-- 1. SQS Backlog -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-indigo-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">HÀNG ĐỢI SQS</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-visible" class="text-2xl font-black font-mono text-indigo-600">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">tin chờ</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">KEDA ngưỡng: 5 msg</div>
+        </div>
+
+        <!-- 2. In-flight -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-cyan-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">JOBS ĐANG XỬ LÝ</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-inflight" class="text-2xl font-black font-mono text-cyan-600">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">in-flight</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">Worker concurrency</div>
+        </div>
+
+        <!-- 3. Worker Pods -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-emerald-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">WORKER PODS</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-replicas" class="text-2xl font-black font-mono text-emerald-600">1</span>
+            <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">Replicas</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">Tự scale từ 1 → 4 pods</div>
+        </div>
+
+        <!-- 4. Rate -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-amber-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">TỐC ĐỘ BẮN TẢI</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-rate" class="text-2xl font-black font-mono text-amber-600">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">req/s</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">Tổng bắn: <span id="telemetry-total-sent">0</span></div>
+        </div>
+
+        <!-- 5. Accepted -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-slate-400 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">ĐÃ XỬ LÝ XONG</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-accepted" class="text-2xl font-black font-mono text-slate-800">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">thành công</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">HTTP 202 → SQS → Done</div>
+        </div>
+
+        <!-- 6. Deduplicated -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-purple-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">TRÙNG LẶP ĐÃ LỌC</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-duplicates" class="text-2xl font-black font-mono text-purple-600">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">idempotent</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">Cache TTL deduplication</div>
+        </div>
+
+        <!-- 7. Errors / DLQ -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm hover:border-rose-300 transition-colors">
+          <div class="text-[11px] font-bold uppercase text-slate-500 tracking-wide">LỖI / VÀO DLQ</div>
+          <div class="mt-2 flex items-baseline justify-between">
+            <span id="telemetry-errors" class="text-2xl font-black font-mono text-rose-600">0</span>
+            <span class="text-[10px] font-semibold text-slate-400">thất bại</span>
+          </div>
+          <div class="mt-1 text-[10px] text-slate-400 truncate">Dead Letter Queue</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section 2: Các Loại Test Hệ Thống (6 Cards Grid) -->
+    <section>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="text-sm">⚡</span>
+            <h2 class="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700">CÁC LOẠI TEST HỆ THỐNG — BẤM NÚT LÀ CHẠY NGAY</h2>
+          </div>
+          <p class="text-xs text-slate-500 font-medium mt-0.5">Không cần mở terminal hay gõ lệnh. Chọn bài test và bấm nút, số liệu sẽ nhảy trực tiếp trên hệ thống và Grafana.</p>
+        </div>
+
+        <!-- Filter Tabs -->
+        <div class="flex items-center space-x-1.5 bg-white p-1 rounded-xl border border-slate-200 text-xs shadow-sm">
+          <button onclick="filterCategory('all')" id="tab-all" class="px-3 py-1 rounded-lg font-bold bg-blue-600 text-white shadow-sm transition-all">Tất Cả</button>
+          <button onclick="filterCategory('autoscaling')" id="tab-autoscaling" class="px-3 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition-all">Autoscaling</button>
+          <button onclick="filterCategory('chaos')" id="tab-chaos" class="px-3 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition-all">Pod Lỗi / Chaos</button>
+          <button onclick="filterCategory('resilience')" id="tab-resilience" class="px-3 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition-all">DLQ & Idempotency</button>
+        </div>
+      </div>
+
+      <!-- 6 Test Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="cards-grid">
+
+        <!-- Card 1: 01 · AUTOSCALING (KEDA) -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="autoscaling">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                01 · AUTOSCALING (KEDA)
+              </span>
+              <span id="status-sqs-backlog-spike" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>🚀</span>
+              <span>Test KEDA Scale-Out (Ép Tăng Số Lượng Pods)</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Bắn dồn dập 30 jobs để đẩy hàng đợi SQS vượt ngưỡng 5 messages. KEDA phát hiện backlog và tự động kích hoạt HPA scale Worker Pods từ 1 lên 2, 3, 4 pods.
+            </p>
+            <div class="mt-3 bg-blue-50/70 border border-blue-100 rounded-lg p-2.5 text-[11px] text-blue-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> SQS Queue Depth & Pod Replicas</div>
+              <div class="text-slate-500">Biểu hiện: Hàng đợi tăng vọt, số Pod tự động tăng lên sau ~15s.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('sqs-backlog-spike')" id="btn-sqs-backlog-spike"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-sm shadow-blue-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>🚀 BẮN TẢI ÉP SCALE-OUT (30 JOBS)</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Kích hoạt KEDA HPA scale worker pods tự động</div>
+          </div>
+        </div>
+
+        <!-- Card 2: 02 · CHAOS FAULT INJECTION -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="chaos">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                02 · CHAOS FAULT INJECTION
+              </span>
+              <span id="status-worker-pod-failure" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>💥</span>
+              <span>Test Pod Lỗi (Đột Ngột Sập Worker Process)</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Gửi tin nhắn chứa cờ simulateCrash: true. Worker lập tức kích hoạt process.exit(1) sập pod. Kiểm thử Kubernetes phát hiện container chết và tự hồi sinh pod trong vài giây.
+            </p>
+            <div class="mt-3 bg-rose-50/70 border border-rose-100 rounded-lg p-2.5 text-[11px] text-rose-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> Pod Restarts & Container Health</div>
+              <div class="text-slate-500">Biểu hiện: Restarts +1, tin nhắn được trả lại SQS và xử lý bởi Pod mới.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('worker-pod-failure')" id="btn-worker-pod-failure"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-rose-600 hover:bg-rose-700 active:scale-98 shadow-sm shadow-rose-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>💥 BẮN TIN NHẮN GÂY SẬP POD</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Kiểm thử khả năng tự phục hồi (Self-Healing) của Kubernetes</div>
+          </div>
+        </div>
+
+        <!-- Card 3: 03 · DEAD LETTER QUEUE -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="resilience">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                03 · DEAD LETTER QUEUE
+              </span>
+              <span id="status-poison-pill-dlq" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>☠️</span>
+              <span>Test Poison Pill & Chuyển Hướng DLQ</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Bắn tin nhắn lỗi cố định (shouldFail: true). Worker báo lỗi, retry đủ 3 lần (maxReceiveCount) rồi SQS tự động tống các job này vào Dead Letter Queue cách ly an toàn.
+            </p>
+            <div class="mt-3 bg-amber-50/70 border border-amber-100 rounded-lg p-2.5 text-[11px] text-amber-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> Errors & Retry Pipeline (DLQ Path)</div>
+              <div class="text-slate-500">Biểu hiện: Lỗi tăng lên, tin nhắn được cách ly vào jobs-queue-dlq.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('poison-pill-dlq')" id="btn-poison-pill-dlq"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-amber-600 hover:bg-amber-700 active:scale-98 shadow-sm shadow-amber-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>☠️ BẮN 10 TIN NHẮN LỖI (VÀO DLQ)</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Cách ly tin độc hại, bảo vệ Worker không bị loop lỗi vô tận</div>
+          </div>
+        </div>
+
+        <!-- Card 4: 04 · IDEMPOTENCY -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="resilience">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                04 · IDEMPOTENCY
+              </span>
+              <span id="status-duplicate-burst" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>⚡</span>
+              <span>Test Lọc Trùng Lặp Message (Idempotency)</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Bắn 50 messages nhưng chỉ sử dụng lặp lại 5 mã job_id duy nhất. Worker áp dụng cache TTL để phát hiện trùng và drop bỏ ngay, không tính toán xử lý lại lần 2.
+            </p>
+            <div class="mt-3 bg-purple-50/70 border border-purple-100 rounded-lg p-2.5 text-[11px] text-purple-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> Idempotency: Duplicates Filtered Over Time</div>
+              <div class="text-slate-500">Biểu hiện: Duplicates Filtered vọt tăng ~45; Jobs thực tế xử lý chỉ tăng 5.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('duplicate-burst')" id="btn-duplicate-burst"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 active:scale-98 shadow-sm shadow-purple-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>⚡ BẮN 50 MESSAGES TRÙNG LẶP ID</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Bảo đảm tính toàn vẹn dữ liệu trong hệ thống phân tán</div>
+          </div>
+        </div>
+
+        <!-- Card 5: 05 · LATENCY SURGE -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="autoscaling">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                05 · LATENCY SURGE
+              </span>
+              <span id="status-slow-worker-backlog" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>⏳</span>
+              <span>Test Nghẽn Tác Vụ Nặng (Slow Worker 12s/job)</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Bắn 15 tác vụ nặng cần 12.000ms tính toán. Do worker bị chiếm dụng lâu, hàng đợi SQS dồn ứ nghiêm trọng, kích thích KEDA phải scale thêm Pod tối đa để giải phóng nghẽn.
+            </p>
+            <div class="mt-3 bg-teal-50/70 border border-teal-100 rounded-lg p-2.5 text-[11px] text-teal-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> Active In-Flight Jobs & Concurrency</div>
+              <div class="text-slate-500">Biểu hiện: Concurrency chạm đỉnh, thời gian tồn đọng hàng đợi kéo dài.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('slow-worker-backlog')" id="btn-slow-worker-backlog"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-teal-600 hover:bg-teal-700 active:scale-98 shadow-sm shadow-teal-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>⏳ BẮN 15 TÁC VỤ NẶNG (12 GIÂY/JOB)</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Mô phỏng tác vụ nặng: mã hóa, nén video hoặc AI inference</div>
+          </div>
+        </div>
+
+        <!-- Card 6: 06 · GRACEFUL SHUTDOWN -->
+        <div class="test-card bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="chaos">
+          <div>
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                06 · GRACEFUL SHUTDOWN
+              </span>
+              <span id="status-graceful-drain" class="text-xs font-semibold text-slate-500 flex items-center space-x-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sẵn sàng</span>
+              </span>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-1.5">
+              <span>🛡️</span>
+              <span>Test Tắt An Toàn (Graceful Drain & Zero Loss)</span>
+            </h3>
+            <p class="text-xs text-slate-600 mt-2 leading-relaxed">
+              Gửi tín hiệu drain cho worker (gracefulDrain: true). Worker dừng nhận tin mới từ SQS, đợi xử lý nốt toàn bộ job in-flight hiện tại rồi mới tắt tiến trình một cách êm ái.
+            </p>
+            <div class="mt-3 bg-emerald-50/70 border border-emerald-100 rounded-lg p-2.5 text-[11px] text-emerald-900 space-y-1">
+              <div>📊 <strong>Xem trên Grafana:</strong> Worker Jobs Processed Total & In-Flight</div>
+              <div class="text-slate-500">Biểu hiện: In-flight jobs giảm dần về 0 an toàn; không có job nào bị rớt.</div>
+            </div>
+          </div>
+          <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <button onclick="runScenario('graceful-drain')" id="btn-graceful-drain"
+              class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 active:scale-98 shadow-sm shadow-emerald-500/25 transition-all flex items-center justify-center space-x-1.5">
+              <span>🛡️ GỬI LỆNH GRACEFUL DRAIN</span>
+            </button>
+            <div class="text-[10.5px] text-center text-slate-400">Bảo vệ các job đang chạy dở khi scale in hoặc rolling update</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section 3: Live Activity Stream & Request Log -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-sm">💻</span>
+          <h2 class="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700">LIVE ACTIVITY STREAM & REQUEST LOG</h2>
+          <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block pulse-dot"></span>
+        </div>
+        <div class="flex items-center space-x-3">
+          <span id="log-count" class="text-xs font-mono text-slate-400">1 events</span>
+          <button onclick="clearLogs()" class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors">
+            Xóa Log
+          </button>
+        </div>
+      </div>
+
+      <!-- Terminal Output Window (Clean Dark CLI Style for High Contrast) -->
+      <div id="log-stream" class="bg-slate-950 text-slate-100 font-mono text-xs rounded-xl p-4 border border-slate-800 shadow-inner max-h-56 overflow-y-auto space-y-1.5">
+        <div class="text-emerald-400">[INITIALIZED] Bảng điều khiển bắn tải sẵn sàng. Bấm bất kỳ nút nào để phát tải và quan sát log...</div>
+        <div class="text-slate-400">[READY] Giao diện Test Center EKS đã nạp thành công. Đang lắng nghe telemetry.</div>
+      </div>
+    </section>
+
+    <!-- Section 4: Vòng Đời Trễ KEDA Control Loop Timeline (T0 → T6) -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+        <div>
+          <h2 class="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center space-x-2">
+            <span>⚙️</span>
+            <span>VÒNG ĐỜI TRỄ KEDA CONTROL LOOP TIMELINE (T0 → T6)</span>
+          </h2>
+          <p class="text-xs text-slate-500 mt-0.5">
+            Chu trình điều khiển từ lúc API nhận request, đưa vào SQS, KEDA nhận tín hiệu, kích hoạt HPA rescale, tạo Pod cho đến khi Worker hoàn tất job.
+          </p>
+        </div>
+        <button onclick="toggleTimelineDetails()" id="btn-toggle-timeline" class="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+          Xem Công Thức & Nguồn Metric ▾
+        </button>
+      </div>
+
+      <!-- 7 Horizontal Steps -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center">
+        
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-blue-300 hover:bg-blue-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">T0</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">API Receive</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">POST /jobs</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 font-mono">T1</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">SQS Enqueue</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">enqueued_at</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-purple-300 hover:bg-purple-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">T2</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">KEDA Signal</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Scaler Poll (~15s)</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-fuchsia-300 hover:bg-fuchsia-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-fuchsia-100 text-fuchsia-800 font-mono">T3</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">Target Replicas</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">HPA Rescale Event</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-cyan-300 hover:bg-cyan-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-800 font-mono">T4</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">Pod Created</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">kube-scheduler</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-teal-300 hover:bg-teal-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 font-mono">T5</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">Pod Ready</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Readiness probe</div>
+        </div>
+
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all">
+          <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">T6</span>
+          <div class="text-xs font-bold text-slate-800 mt-1">Job Complete</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Delete SQS msg</div>
+        </div>
+
+      </div>
+
+      <!-- Collapsible Formulas Table -->
+      <div id="timeline-details" class="hidden mt-4 pt-3 border-t border-slate-100">
+        <div class="overflow-x-auto text-xs">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-slate-400 font-semibold border-b border-slate-100">
+                <th class="py-2 pr-4">Khoảng thời gian (Interval)</th>
+                <th class="py-2 pr-4">Công thức toán học</th>
+                <th class="py-2 pr-4">Nguồn dữ liệu (Metric / Log)</th>
+                <th class="py-2">Đặc tính kỹ thuật</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-600 font-mono text-[11px]">
+              <tr>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">API-to-Queue</td>
+                <td class="py-2 pr-4 text-blue-700">T1 - T0</td>
+                <td class="py-2 pr-4">API Express logs</td>
+                <td class="py-2 font-sans">Thời gian đẩy vào AWS SQS (&lt; 20ms)</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">Queue Detection</td>
+                <td class="py-2 pr-4 text-purple-700">T2 - T1</td>
+                <td class="py-2 pr-4">KEDA Operator log</td>
+                <td class="py-2 font-sans">Chu kỳ Polling của KEDA SQS scaler (15s)</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">Scale Decision</td>
+                <td class="py-2 pr-4 text-purple-700">T3 - T2</td>
+                <td class="py-2 pr-4">HPA SuccessfulRescale</td>
+                <td class="py-2 font-sans">Quyết định tăng replicas của HPA</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">Pod Scheduling & Startup</td>
+                <td class="py-2 pr-4 text-cyan-700">T5 - T4</td>
+                <td class="py-2 pr-4">Kubelet Pod conditions</td>
+                <td class="py-2 font-sans">Kéo image từ ECR và vượt qua readiness probe</td>
+              </tr>
+              <tr>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">End-to-End Latency</td>
+                <td class="py-2 pr-4 text-emerald-700">T6 - T0</td>
+                <td class="py-2 pr-4">Worker T6 vs API T0</td>
+                <td class="py-2 font-sans">Đo đạc chính xác bằng đồng hồ thời gian thực EC2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 right-6 transition-all duration-300 opacity-0 translate-y-3 pointer-events-none z-50">
+    <div class="bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 border border-slate-700">
+      <span id="toast-text">Sẵn sàng</span>
+    </div>
+  </div>
+
+  <script>
+    // State management
+    let activeScenarioId = null;
+    let eventLogCount = 2;
+    let totalSentCount = 0;
+    let rateInterval = null;
+    let currentBatchSent = 0;
+
+    // Live Clock
+    function updateClock() {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds} ${ampm}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Logger
+    function appendLog(type, message) {
+      const stream = document.getElementById('log-stream');
+      const countEl = document.getElementById('log-count');
+      const time = new Date().toLocaleTimeString();
+
+      let colorClass = 'text-slate-300';
+      if (type === 'SUCCESS') colorClass = 'text-emerald-400';
+      if (type === 'WARN') colorClass = 'text-amber-400';
+      if (type === 'ERROR') colorClass = 'text-rose-400';
+      if (type === 'DISPATCH') colorClass = 'text-cyan-400';
+      if (type === 'SCALE') colorClass = 'text-purple-400';
+
+      const line = document.createElement('div');
+      line.className = colorClass;
+      line.textContent = `[${time}] [${type}] ${message}`;
+      stream.appendChild(line);
+      stream.scrollTop = stream.scrollHeight;
+
+      eventLogCount++;
+      countEl.textContent = `${eventLogCount} events`;
+    }
+
+    function clearLogs() {
+      const stream = document.getElementById('log-stream');
+      stream.innerHTML = '<div class="text-slate-400">[CLEARED] Đã xóa lịch sử log.</div>';
+      eventLogCount = 1;
+      document.getElementById('log-count').textContent = '1 events';
+    }
+
+    // Toast
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const text = document.getElementById('toast-text');
+      text.textContent = msg;
+      toast.classList.remove('opacity-0', 'translate-y-3');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-3');
+      }, 2500);
+    }
+
+    // Timeline toggle
+    function toggleTimelineDetails() {
+      const el = document.getElementById('timeline-details');
+      const btn = document.getElementById('btn-toggle-timeline');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        btn.textContent = 'Ẩn Công Thức & Nguồn Metric ▴';
+      } else {
+        el.classList.add('hidden');
+        btn.textContent = 'Xem Công Thức & Nguồn Metric ▾';
+      }
+    }
+
+    // Category Filter
+    function filterCategory(cat) {
+      const tabs = ['all', 'autoscaling', 'chaos', 'resilience'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-${t}`);
+        if (t === cat) {
+          btn.className = 'px-3 py-1 rounded-lg font-bold bg-blue-600 text-white shadow-sm transition-all';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg font-medium text-slate-600 hover:text-slate-900 transition-all';
+        }
+      });
+
+      const cards = document.querySelectorAll('.test-card');
+      cards.forEach(card => {
+        if (cat === 'all' || card.dataset.category === cat) {
+          card.classList.remove('hidden');
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+    }
+
+    // Execute Scenario Trigger
+    async function runScenario(id) {
+      if (activeScenarioId === id) {
+        // Stop current running test
+        await stopScenario(id);
+        return;
+      }
+
+      activeScenarioId = id;
+      updateCardRunningUI(id, true);
+      appendLog('DISPATCH', `Bắt đầu kịch bản: ${id}`);
+      showToast(`Đang phát tải kịch bản: ${id}`);
+
+      try {
+        // First try the backend chaos controller endpoint
+        const res = await fetch(`/api/chaos/scenarios/${encodeURIComponent(id)}/start`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          appendLog('SUCCESS', `Backend đã kích hoạt ${id}: ${data.scenario?.maxJobs || ''} jobs`);
+        } else {
+          // If controller is running in standalone mode, trigger direct client-side job generator
+          appendLog('WARN', `Controller API (${res.status}), tự động chuyển sang chế độ phát tải trực tiếp...`);
+          await dispatchDirectLoad(id);
+        }
+      } catch (e) {
+        appendLog('DISPATCH', `Chuyển sang chế độ gửi tải trực tiếp vào /api/jobs...`);
+        await dispatchDirectLoad(id);
+      }
+    }
+
+    async function stopScenario(id) {
+      try {
+        await fetch(`/api/chaos/scenarios/${encodeURIComponent(id)}/stop`, { method: 'POST' }).catch(() => {});
+      } catch (e) {}
+      appendLog('WARN', `Đã gửi lệnh dừng kịch bản: ${id}`);
+      updateCardRunningUI(id, false);
+      activeScenarioId = null;
+      showToast(`Đã dừng kịch bản ${id}`);
+    }
+
+    async function stopAllTests() {
+      if (activeScenarioId) {
+        await stopScenario(activeScenarioId);
+      }
+      try {
+        await fetch('/api/chaos/scenarios/reset', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
+      appendLog('WARN', 'Đã dừng toàn bộ kịch bản phát tải.');
+      showToast('Đã dừng toàn bộ tải');
+    }
+
+    function updateCardRunningUI(id, isRunning) {
+      const btn = document.getElementById(`btn-${id}`);
+      const status = document.getElementById(`status-${id}`);
+      if (!btn) return;
+
+      if (isRunning) {
+        btn.dataset.originalText = btn.innerHTML;
+        btn.className = 'w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-slate-800 hover:bg-slate-900 shadow-sm transition-all flex items-center justify-center space-x-1.5 pulse-running';
+        btn.innerHTML = '<span>■ DỪNG BẮN TẢI</span>';
+        if (status) {
+          status.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 pulse-dot"></span><span class="text-blue-600 font-bold">Đang chạy...</span>';
+        }
+      } else {
+        if (btn.dataset.originalText) {
+          btn.innerHTML = btn.dataset.originalText;
+        }
+        btn.className = btn.className.replace('bg-slate-800 hover:bg-slate-900 pulse-running', '');
+        // restore original color by ID
+        if (id.includes('backlog') || id.includes('traffic')) btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        else if (id.includes('failure')) btn.classList.add('bg-rose-600', 'hover:bg-rose-700');
+        else if (id.includes('poison')) btn.classList.add('bg-amber-600', 'hover:bg-amber-700');
+        else if (id.includes('duplicate')) btn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+        else if (id.includes('slow')) btn.classList.add('bg-teal-600', 'hover:bg-teal-700');
+        else if (id.includes('drain')) btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+
+        if (status) {
+          status.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Sẵn sàng</span>';
+        }
+      }
+    }
+
+    // Direct Job Dispatcher Fallback (Ensures tests ALWAYS succeed)
+    async function dispatchDirectLoad(scenarioId) {
+      let count = 10;
+      let intervalMs = 250;
+      let payload = { test: true };
+      let processTimeMs = 1000;
+      let shouldFail = false;
+      let simulateCrash = false;
+      let gracefulDrain = false;
+
+      if (scenarioId === 'sqs-backlog-spike') {
+        count = 30;
+        intervalMs = 200;
+        processTimeMs = 2500;
+      } else if (scenarioId === 'worker-pod-failure') {
+        count = 3;
+        intervalMs = 2000;
+        simulateCrash = true;
+      } else if (scenarioId === 'poison-pill-dlq') {
+        count = 10;
+        intervalMs = 800;
+        shouldFail = true;
+      } else if (scenarioId === 'duplicate-burst') {
+        count = 50;
+        intervalMs = 150;
+      } else if (scenarioId === 'slow-worker-backlog') {
+        count = 15;
+        intervalMs = 600;
+        processTimeMs = 12000;
+      } else if (scenarioId === 'graceful-drain') {
+        count = 2;
+        intervalMs = 3000;
+        gracefulDrain = true;
+      }
+
+      const duplicateJobIds = [
+        'idempotent-job-alpha-001',
+        'idempotent-job-beta-002',
+        'idempotent-job-gamma-003',
+        'idempotent-job-delta-004',
+        'idempotent-job-omega-005'
+      ];
+
+      appendLog('DISPATCH', `Đang phát ${count} jobs (interval: ${intervalMs}ms)...`);
+
+      let sent = 0;
+      const timer = setInterval(async () => {
+        if (activeScenarioId !== scenarioId || sent >= count) {
+          clearInterval(timer);
+          updateCardRunningUI(scenarioId, false);
+          activeScenarioId = null;
+          appendLog('SUCCESS', `Hoàn tất kịch bản ${scenarioId} (${sent}/${count} jobs).`);
+          return;
+        }
+
+        sent++;
+        totalSentCount++;
+        currentBatchSent++;
+        document.getElementById('telemetry-total-sent').textContent = totalSentCount;
+
+        let jobId = undefined;
+        if (scenarioId === 'duplicate-burst') {
+          jobId = duplicateJobIds[sent % duplicateJobIds.length];
+        }
+
+        try {
+          const body = {
+            job_id: jobId,
+            payload: { ...payload, seq: sent, scenario: scenarioId },
+            processTimeMs: processTimeMs,
+            shouldFail: shouldFail,
+            simulateCrash: simulateCrash,
+            gracefulDrain: gracefulDrain
+          };
+
+          const endpoint = window.location.pathname.startsWith('/api') ? '/api/jobs' : '/jobs';
+          fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          }).then(r => r.json()).then(res => {
+            if (sent % 5 === 0 || sent === count) {
+              appendLog('DISPATCH', `Job #${sent}/${count} [${res.status || 'accepted'}] ID: ${res.job_id || 'ok'}`);
+            }
+          }).catch(err => {
+            appendLog('ERROR', `Lỗi gửi job #${sent}: ${err.message}`);
+          });
+
+        } catch (e) {
+          appendLog('ERROR', `Job gửi thất bại: ${e.message}`);
+        }
+      }, intervalMs);
+    }
+
+    // Rate Calculator (req/s)
+    setInterval(() => {
+      document.getElementById('telemetry-rate').textContent = currentBatchSent;
+      currentBatchSent = 0;
+    }, 1000);
+
+    // Live Metrics Polling
+    async function fetchLiveTelemetry() {
+      try {
+        const res = await fetch('/api/metrics').catch(() => fetch('/metrics')).catch(() => null);
+        if (res && res.ok) {
+          const text = await res.text();
+          const matchMetric = (regex) => {
+            const m = text.match(regex);
+            return m ? m[1] : null;
+          };
+
+          const visible = matchMetric(/api_sqs_approximate_messages_visible(?:\{[^\}]*\})?\s+(\d+)/);
+          const inflight = matchMetric(/api_sqs_approximate_messages_not_visible(?:\{[^\}]*\})?\s+(\d+)/);
+          const accepted = matchMetric(/api_jobs_accepted_total\s+(\d+)/);
+
+          if (visible !== null) document.getElementById('telemetry-visible').textContent = visible;
+          if (inflight !== null) document.getElementById('telemetry-inflight').textContent = inflight;
+          if (accepted !== null) document.getElementById('telemetry-accepted').textContent = accepted;
+        }
+
+        // Worker Telemetry
+        const workerRes = await fetch('/api/worker-health').catch(() => null);
+        if (workerRes && workerRes.ok) {
+          const wJson = await workerRes.json();
+          if (wJson.total_duplicates !== undefined) document.getElementById('telemetry-duplicates').textContent = wJson.total_duplicates;
+          if (wJson.total_errors !== undefined) document.getElementById('telemetry-errors').textContent = wJson.total_errors;
+          if (wJson.worker_id) {
+            // Worker is alive
+          }
+        }
+      } catch (e) {
+        // silent
+      }
+    }
+
+    // Sync Scenario Status from backend
+    async function syncBackendScenarios() {
+      try {
+        const res = await fetch('/api/chaos/scenarios').catch(() => null);
+        if (!res && !res.ok) return;
+        const data = await res.json();
+        if (data.scenarios) {
+          data.scenarios.forEach(sc => {
+            const statusEl = document.getElementById(`status-${sc.id}`);
+            if (statusEl) {
+              if (sc.status === 'running') {
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-500 pulse-dot"></span><span class="text-blue-600 font-bold">${sc.run?.sentJobs || 0}/${sc.run?.maxJobs || 0}</span>`;
+              } else if (sc.status === 'completed') {
+                statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-emerald-600 font-medium">Hoàn tất</span>';
+              } else {
+                statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Sẵn sàng</span>';
+              }
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchLiveTelemetry();
+      syncBackendScenarios();
+      setInterval(fetchLiveTelemetry, 1500);
+      setInterval(syncBackendScenarios, 2000);
+    });
+  </script>
+</body>
+</html>
