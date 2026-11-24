@@ -103,9 +103,9 @@ const chaosScenarioDefinitions = {
     description: 'Direct high-rate batch injection into SQS to rapidly breach KEDA queueLength=5 threshold',
     category: 'LOAD & BACKLOG',
     severity: 'High',
-    maxJobs: 30,
-    batchSize: 5,
-    intervalMs: 250,
+    maxJobs: 1000,
+    batchSize: 25,
+    intervalMs: 50,
     processTimeMs: 2500,
     transport: 'sqs',
     shouldFail: false,
@@ -603,6 +603,10 @@ app.post('/jobs', async (req, res) => {
     const jobId = body.job_id || body.jobId || uuidv4();
     const createdAt = apiReceivedAt;
     const clientSentAt = typeof body.client_sent_at === 'string' ? body.client_sent_at : null;
+    const clientSentTimeMs = clientSentAt ? Date.parse(clientSentAt) : NaN;
+    const clientToApiMs = Number.isFinite(clientSentTimeMs)
+      ? Date.parse(apiReceivedAt) - clientSentTimeMs
+      : 'unknown';
     const processTimeMs = typeof body.processTimeMs === 'number' ? body.processTimeMs : 1000;
     const shouldFail = !!body.shouldFail;
     const simulateCrash = Boolean(
@@ -652,6 +656,7 @@ app.post('/jobs', async (req, res) => {
 
     console.log(
       `[SQS SENT] job_id=${jobId} message_id=${sqsResponse.MessageId} ` +
+      `client_sent_at=${clientSentAt || 'not_provided'} client_to_api_ms=${clientToApiMs} ` +
       `api_received_at=${apiReceivedAt} enqueued_at=${enqueuedAt} target_queue=${QUEUE_URL}`
     );
 

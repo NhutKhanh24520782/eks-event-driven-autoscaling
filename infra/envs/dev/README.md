@@ -13,6 +13,8 @@ review every value. In particular:
 - Add IAM principal ARNs that need cluster administrator access.
 - Set valid `alert_emails` and a cost-conscious node size.
 - Set `install_keda = true` only when enabling SQS-based scaling.
+- KEDA installation waits for the AWS Load Balancer Controller, whose Service
+  admission webhook must be available while Kubernetes Services are created.
 - Confirm `region`, `cluster_name`, and backend in `versions.tf`.
 
 ## Plan and apply

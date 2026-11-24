@@ -163,15 +163,20 @@ async function processSingleMessage(message) {
     jobData.action === 'graceful-drain'
   );
 
-  // Chaos Injection: Immediate Process Termination (Pod Crash simulation)
-  if (simulateCrash) {
+  // Crash once, then let SQS redelivery recover the job instead of crashing every worker.
+  if (simulateCrash && receiveCount === 1) {
     console.error(
       `[WORKER ${WORKER_ID}] [CHAOS CRASH INJECTED] Received simulated crash for job_id=${jobId} ` +
       `(receive_count=${receiveCount}). Terminating worker process with exit code 1 immediately! ` +
       `Message remains in SQS for visibility redelivery recovery.`
     );
-    // Kubernetes will detect non-zero exit code, increment container restarts, and restart the Pod.
     process.exit(1);
+  }
+  if (simulateCrash) {
+    console.warn(
+      `[WORKER ${WORKER_ID}] [CHAOS CRASH RECOVERY] Redelivered crash-test job_id=${jobId} ` +
+      `(receive_count=${receiveCount}); processing the retry normally.`
+    );
   }
 
   // Chaos Injection: Graceful Drain Simulation

@@ -258,17 +258,17 @@
               <span>Test KEDA Scale-Out (Ép Tăng Số Lượng Pods)</span>
             </h3>
             <p class="text-xs text-slate-600 mt-2 leading-relaxed">
-              Bắn dồn dập 30 jobs để đẩy hàng đợi SQS vượt ngưỡng 5 messages. KEDA phát hiện backlog và tự động kích hoạt HPA scale Worker Pods từ 1 lên 2, 3, 4 pods.
+              Bắn rải tải 600+ jobs liên tục trong 30s để duy trì hàng đợi SQS vượt ngưỡng. KEDA phát hiện backlog và tự động kích hoạt HPA scale Worker Pods từ 1 lên 2, 3, 4 pods.
             </p>
             <div class="mt-3 bg-blue-50/70 border border-blue-100 rounded-lg p-2.5 text-[11px] text-blue-900 space-y-1">
               <div>📊 <strong>Xem trên Grafana:</strong> SQS Queue Depth & Pod Replicas</div>
-              <div class="text-slate-500">Biểu hiện: Hàng đợi tăng vọt, số Pod tự động tăng lên sau ~15s.</div>
+              <div class="text-slate-500">Biểu hiện: Hàng đợi duy trì cao qua chu kỳ polling, số Pod tự động scale-out.</div>
             </div>
           </div>
           <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
             <button onclick="runScenario('sqs-backlog-spike')" id="btn-sqs-backlog-spike"
               class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-sm shadow-blue-500/25 transition-all flex items-center justify-center space-x-1.5">
-              <span>🚀 BẮN TẢI ÉP SCALE-OUT (30 JOBS)</span>
+              <span>🚀 BẮN TẢI ÉP SCALE-OUT (600 JOBS / 30S)</span>
             </button>
             <div class="text-[10.5px] text-center text-slate-400">Kích hoạt KEDA HPA scale worker pods tự động</div>
           </div>
@@ -334,7 +334,7 @@
           <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
             <button onclick="runScenario('poison-pill-dlq')" id="btn-poison-pill-dlq"
               class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-amber-600 hover:bg-amber-700 active:scale-98 shadow-sm shadow-amber-500/25 transition-all flex items-center justify-center space-x-1.5">
-              <span>☠️ BẮN 10 TIN NHẮN LỖI (VÀO DLQ)</span>
+              <span>☠️ BẮN 15 TIN NHẮN LỖI (VÀO DLQ)</span>
             </button>
             <div class="text-[10.5px] text-center text-slate-400">Cách ly tin độc hại, bảo vệ Worker không bị loop lỗi vô tận</div>
           </div>
@@ -357,17 +357,17 @@
               <span>Test Lọc Trùng Lặp Message (Idempotency)</span>
             </h3>
             <p class="text-xs text-slate-600 mt-2 leading-relaxed">
-              Bắn 50 messages nhưng chỉ sử dụng lặp lại 5 mã job_id duy nhất. Worker áp dụng cache TTL để phát hiện trùng và drop bỏ ngay, không tính toán xử lý lại lần 2.
+              Bắn 300 messages nhưng chỉ sử dụng lặp lại 5 mã job_id duy nhất. Worker áp dụng cache TTL để phát hiện trùng và drop bỏ ngay, không tính toán xử lý lại lần 2.
             </p>
             <div class="mt-3 bg-purple-50/70 border border-purple-100 rounded-lg p-2.5 text-[11px] text-purple-900 space-y-1">
               <div>📊 <strong>Xem trên Grafana:</strong> Idempotency: Duplicates Filtered Over Time</div>
-              <div class="text-slate-500">Biểu hiện: Duplicates Filtered vọt tăng ~45; Jobs thực tế xử lý chỉ tăng 5.</div>
+              <div class="text-slate-500">Biểu hiện: Duplicates Filtered vọt tăng ~295; Jobs thực tế xử lý chỉ tăng 5.</div>
             </div>
           </div>
           <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
             <button onclick="runScenario('duplicate-burst')" id="btn-duplicate-burst"
               class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 active:scale-98 shadow-sm shadow-purple-500/25 transition-all flex items-center justify-center space-x-1.5">
-              <span>⚡ BẮN 50 MESSAGES TRÙNG LẶP ID</span>
+              <span>⚡ BẮN 300 MESSAGES TRÙNG LẶP ID</span>
             </button>
             <div class="text-[10.5px] text-center text-slate-400">Bảo đảm tính toàn vẹn dữ liệu trong hệ thống phân tán</div>
           </div>
@@ -390,7 +390,7 @@
               <span>Test Nghẽn Tác Vụ Nặng (Slow Worker 12s/job)</span>
             </h3>
             <p class="text-xs text-slate-600 mt-2 leading-relaxed">
-              Bắn 15 tác vụ nặng cần 12.000ms tính toán. Do worker bị chiếm dụng lâu, hàng đợi SQS dồn ứ nghiêm trọng, kích thích KEDA phải scale thêm Pod tối đa để giải phóng nghẽn.
+              Bắn 30 tác vụ nặng cần 12.000ms tính toán. Do worker bị chiếm dụng lâu, hàng đợi SQS dồn ứ nghiêm trọng, kích thích KEDA phải scale thêm Pod tối đa để giải phóng nghẽn.
             </p>
             <div class="mt-3 bg-teal-50/70 border border-teal-100 rounded-lg p-2.5 text-[11px] text-teal-900 space-y-1">
               <div>📊 <strong>Xem trên Grafana:</strong> Active In-Flight Jobs & Concurrency</div>
@@ -400,7 +400,7 @@
           <div class="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
             <button onclick="runScenario('slow-worker-backlog')" id="btn-slow-worker-backlog"
               class="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-teal-600 hover:bg-teal-700 active:scale-98 shadow-sm shadow-teal-500/25 transition-all flex items-center justify-center space-x-1.5">
-              <span>⏳ BẮN 15 TÁC VỤ NẶNG (12 GIÂY/JOB)</span>
+              <span>⏳ BẮN 30 TÁC VỤ NẶNG (12 GIÂY/JOB)</span>
             </button>
             <div class="text-[10.5px] text-center text-slate-400">Mô phỏng tác vụ nặng: mã hóa, nén video hoặc AI inference</div>
           </div>
@@ -451,7 +451,7 @@
           <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block pulse-dot"></span>
         </div>
         <div class="flex items-center space-x-3">
-          <span id="log-count" class="text-xs font-mono text-slate-400">1 events</span>
+          <span id="log-count" class="text-xs font-mono text-slate-400">2 events</span>
           <button onclick="clearLogs()" class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors">
             Xóa Log
           </button>
@@ -460,8 +460,8 @@
 
       <!-- Terminal Output Window (Clean Dark CLI Style for High Contrast) -->
       <div id="log-stream" class="bg-slate-950 text-slate-100 font-mono text-xs rounded-xl p-4 border border-slate-800 shadow-inner max-h-56 overflow-y-auto space-y-1.5">
-        <div class="text-emerald-400">[INITIALIZED] Bảng điều khiển bắn tải sẵn sàng. Bấm bất kỳ nút nào để phát tải và quan sát log...</div>
-        <div class="text-slate-400">[READY] Giao diện Test Center EKS đã nạp thành công. Đang lắng nghe telemetry.</div>
+        <div class="text-emerald-400">[INITIALIZED] Bảng điều khiển bắn tải thực tế sẵn sàng (đã tắt công thức giả lập 24700ms).</div>
+        <div class="text-slate-400">[READY] Giao diện Test Center EKS đã nạp thành công. Đang đồng bộ lệch giờ và lắng nghe telemetry.</div>
       </div>
     </section>
 
@@ -471,62 +471,108 @@
         <div>
           <h2 class="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center space-x-2">
             <span>⚙️</span>
-            <span>VÒNG ĐỜI TRỄ KEDA CONTROL LOOP TIMELINE (T0 → T6)</span>
+            <span>VÒNG ĐỜI TRỄ KEDA CONTROL LOOP TIMELINE (T0 → T6 - DỮ LIỆU THẬT)</span>
           </h2>
           <p class="text-xs text-slate-500 mt-0.5">
-            Chu trình điều khiển từ lúc API nhận request, đưa vào SQS, KEDA nhận tín hiệu, kích hoạt HPA rescale, tạo Pod cho đến khi Worker hoàn tất job.
+            Đo thời gian thực tế: T0 (Client tạo job), T1 (SQS Enqueue), T6 (Queue cạn hoàn toàn). T2–T5 quan sát trên Grafana &amp; Kubernetes Events.
           </p>
         </div>
-        <button onclick="toggleTimelineDetails()" id="btn-toggle-timeline" class="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
-          Xem Công Thức & Nguồn Metric ▾
-        </button>
+        <div class="flex items-center space-x-2">
+          <button onclick="runT0T6Benchmark(600)" id="btn-t0t6-benchmark" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shadow-sm transition-all">
+            <span>⏱️ Đo T0–T6 Thực Tế (600 Jobs)</span>
+          </button>
+          <button onclick="exportT0T6CSV()" id="btn-export-csv" class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-700 text-xs font-bold shadow-sm transition-all">
+            <span>📥 Xuất Minh Chứng CSV Thật</span>
+          </button>
+          <button onclick="toggleTimelineDetails()" id="btn-toggle-timeline" class="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors">
+            Công Thức ▾
+          </button>
+        </div>
       </div>
 
-      <!-- 7 Horizontal Steps -->
+      <!-- 7 Horizontal Steps With Live Timestamps & Latency -->
       <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center">
         
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-blue-300 hover:bg-blue-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">T0</span>
-          <div class="text-xs font-bold text-slate-800 mt-1">API Receive</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">POST /jobs</div>
+          <div class="text-xs font-bold text-slate-800 mt-1">Job Created</div>
+          <div id="val-t0" class="text-[11px] font-mono font-bold text-blue-600 mt-0.5">--:--:--</div>
+          <div class="text-[10px] text-slate-400 font-mono mt-0.5">Client T0</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 font-mono">T1</span>
           <div class="text-xs font-bold text-slate-800 mt-1">SQS Enqueue</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">enqueued_at</div>
+          <div id="val-t1" class="text-[11px] font-mono font-bold text-indigo-600 mt-0.5">--:--:--</div>
+          <div id="diff-t1-t0" class="text-[10px] text-indigo-600 font-mono font-bold mt-0.5">Δ: -- ms</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-purple-300 hover:bg-purple-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">T2</span>
           <div class="text-xs font-bold text-slate-800 mt-1">KEDA Signal</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Scaler Poll (~15s)</div>
+          <div id="val-t2" class="text-[11px] font-mono font-bold text-purple-600 mt-0.5">--:--:--</div>
+          <div id="diff-t2-t1" class="text-[10px] text-purple-600 font-mono font-bold mt-0.5">Cluster Event</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-fuchsia-300 hover:bg-fuchsia-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-fuchsia-100 text-fuchsia-800 font-mono">T3</span>
           <div class="text-xs font-bold text-slate-800 mt-1">Target Replicas</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">HPA Rescale Event</div>
+          <div id="val-t3" class="text-[11px] font-mono font-bold text-fuchsia-600 mt-0.5">--:--:--</div>
+          <div id="diff-t3-t2" class="text-[10px] text-fuchsia-600 font-mono font-bold mt-0.5">HPA Event</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-cyan-300 hover:bg-cyan-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-800 font-mono">T4</span>
           <div class="text-xs font-bold text-slate-800 mt-1">Pod Created</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">kube-scheduler</div>
+          <div id="val-t4" class="text-[11px] font-mono font-bold text-cyan-600 mt-0.5">--:--:--</div>
+          <div id="diff-t4-t3" class="text-[10px] text-cyan-600 font-mono font-bold mt-0.5">K8s Pod</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-teal-300 hover:bg-teal-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 text-teal-800 font-mono">T5</span>
           <div class="text-xs font-bold text-slate-800 mt-1">Pod Ready</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Readiness probe</div>
+          <div id="val-t5" class="text-[11px] font-mono font-bold text-teal-600 mt-0.5">--:--:--</div>
+          <div id="diff-t5-t4" class="text-[10px] text-teal-600 font-mono font-bold mt-0.5">K8s Pod</div>
         </div>
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-3 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all">
           <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">T6</span>
           <div class="text-xs font-bold text-slate-800 mt-1">Job Complete</div>
-          <div class="text-[10px] text-slate-500 font-mono mt-0.5">Delete SQS msg</div>
+          <div id="val-t6" class="text-[11px] font-mono font-bold text-emerald-600 mt-0.5">--:--:--</div>
+          <div id="diff-t6-t0" class="text-[10px] text-emerald-600 font-mono font-bold mt-0.5">E2E: -- ms</div>
         </div>
 
+      </div>
+
+      <!-- Live Measured Records Table & Evidence Export -->
+      <div class="mt-4 pt-3 border-t border-slate-100">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-slate-700">📋 Bảng Dữ Liệu Đo Lường T0–T6 Thời Gian Thực (Minh Chứng Thực Nghiệm)</span>
+          <span id="t0t6-record-count" class="text-[11px] font-semibold text-slate-500">0 mẫu đo</span>
+        </div>
+        <div class="overflow-x-auto max-h-48 border border-slate-100 rounded-xl">
+          <table class="w-full text-left text-[11px]">
+            <thead class="bg-slate-50 text-slate-500 sticky top-0">
+              <tr>
+                <th class="py-1.5 px-3">#</th>
+                <th class="py-1.5 px-3">Job ID</th>
+                <th class="py-1.5 px-3">T0 (Client)</th>
+                <th class="py-1.5 px-3">T1 (SQS)</th>
+                <th class="py-1.5 px-3">T1-T0</th>
+                <th class="py-1.5 px-3">T2 (KEDA)</th>
+                <th class="py-1.5 px-3">T3 (HPA)</th>
+                <th class="py-1.5 px-3">T5 (Pod Ready)</th>
+                <th class="py-1.5 px-3">T6 (Queue Drain)</th>
+                <th class="py-1.5 px-3">E2E Latency</th>
+              </tr>
+            </thead>
+            <tbody id="t0t6-table-body" class="divide-y divide-slate-100 font-mono text-slate-600">
+              <tr>
+                <td colspan="10" class="py-3 text-center text-slate-400 font-sans">Chưa có lượt đo nào. Nhấn "Đo T0–T6 Thực Tế" hoặc bắn tải kịch bản để bắt đầu ghi nhận minh chứng.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Collapsible Formulas Table -->
@@ -543,21 +589,21 @@
             </thead>
             <tbody class="divide-y divide-slate-100 text-slate-600 font-mono text-[11px]">
               <tr>
-                <td class="py-2 pr-4 font-sans font-medium text-slate-800">API-to-Queue</td>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">Client-to-Queue</td>
                 <td class="py-2 pr-4 text-blue-700">T1 - T0</td>
-                <td class="py-2 pr-4">API Express logs</td>
-                <td class="py-2 font-sans">Thời gian đẩy vào AWS SQS (&lt; 20ms)</td>
+                <td class="py-2 pr-4">Client T0 vs API SQS response</td>
+                <td class="py-2 font-sans">Thời gian từ lúc tạo request tới khi đẩy vào AWS SQS</td>
               </tr>
               <tr>
                 <td class="py-2 pr-4 font-sans font-medium text-slate-800">Queue Detection</td>
                 <td class="py-2 pr-4 text-purple-700">T2 - T1</td>
-                <td class="py-2 pr-4">KEDA Operator log</td>
+                <td class="py-2 pr-4">KEDA Operator log / Grafana</td>
                 <td class="py-2 font-sans">Chu kỳ Polling của KEDA SQS scaler (15s)</td>
               </tr>
               <tr>
                 <td class="py-2 pr-4 font-sans font-medium text-slate-800">Scale Decision</td>
                 <td class="py-2 pr-4 text-purple-700">T3 - T2</td>
-                <td class="py-2 pr-4">HPA SuccessfulRescale</td>
+                <td class="py-2 pr-4">HPA SuccessfulRescale event</td>
                 <td class="py-2 font-sans">Quyết định tăng replicas của HPA</td>
               </tr>
               <tr>
@@ -567,10 +613,10 @@
                 <td class="py-2 font-sans">Kéo image từ ECR và vượt qua readiness probe</td>
               </tr>
               <tr>
-                <td class="py-2 pr-4 font-sans font-medium text-slate-800">End-to-End Latency</td>
+                <td class="py-2 pr-4 font-sans font-medium text-slate-800">End-to-End Drain Latency</td>
                 <td class="py-2 pr-4 text-emerald-700">T6 - T0</td>
-                <td class="py-2 pr-4">Worker T6 vs API T0</td>
-                <td class="py-2 font-sans">Đo đạc chính xác bằng đồng hồ thời gian thực EC2</td>
+                <td class="py-2 pr-4">SQS visible & in-flight = 0</td>
+                <td class="py-2 font-sans">Đo thực tế đến khi Worker xử lý cạn hàng đợi SQS</td>
               </tr>
             </tbody>
           </table>
@@ -590,10 +636,12 @@
   <script>
     // State management
     let activeScenarioId = null;
+    let activeTimers = [];
     let eventLogCount = 2;
     let totalSentCount = 0;
-    let rateInterval = null;
     let currentBatchSent = 0;
+    let clockOffsetMs = 0; // Bù trừ lệch đồng hồ giữa trình duyệt và API Server
+    let measuredLatencyRecords = [];
 
     // Live Clock
     function updateClock() {
@@ -607,6 +655,26 @@
     }
     setInterval(updateClock, 1000);
     updateClock();
+
+    // Ước lượng lệch đồng hồ (NTP offset) giữa Client Browser và API Server
+    async function calibrateClockOffset() {
+      try {
+        const tSend = Date.now();
+        const res = await fetch('/api/health').catch(() => fetch('/health'));
+        const tRecv = Date.now();
+        if (res && res.ok) {
+          const rtt = tRecv - tSend;
+          const serverDateHeader = res.headers.get('Date');
+          if (serverDateHeader) {
+            const serverMs = new Date(serverDateHeader).getTime();
+            clockOffsetMs = Math.round(serverMs - (tSend + rtt / 2));
+            appendLog('SUCCESS', `Đã đồng bộ mốc thời gian với API (RTT: ${rtt}ms, Clock offset ước tính: ${clockOffsetMs}ms).`);
+          }
+        }
+      } catch (e) {
+        appendLog('WARN', 'Không thể ước lượng lệch giờ qua /health, sử dụng đồng hồ cục bộ.');
+      }
+    }
 
     // Logger
     function appendLog(type, message) {
@@ -657,10 +725,10 @@
       const btn = document.getElementById('btn-toggle-timeline');
       if (el.classList.contains('hidden')) {
         el.classList.remove('hidden');
-        btn.textContent = 'Ẩn Công Thức & Nguồn Metric ▴';
+        btn.textContent = 'Ẩn Công Thức ▴';
       } else {
         el.classList.add('hidden');
-        btn.textContent = 'Xem Công Thức & Nguồn Metric ▾';
+        btn.textContent = 'Công Thức ▾';
       }
     }
 
@@ -688,35 +756,29 @@
 
     // Execute Scenario Trigger
     async function runScenario(id) {
-      if (activeScenarioId === id) {
-        // Stop current running test
-        await stopScenario(id);
-        return;
-      }
-
       activeScenarioId = id;
       updateCardRunningUI(id, true);
       appendLog('DISPATCH', `Bắt đầu kịch bản: ${id}`);
       showToast(`Đang phát tải kịch bản: ${id}`);
 
       try {
-        // First try the backend chaos controller endpoint
         const res = await fetch(`/api/chaos/scenarios/${encodeURIComponent(id)}/start`, { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           appendLog('SUCCESS', `Backend đã kích hoạt ${id}: ${data.scenario?.maxJobs || ''} jobs`);
         } else {
-          // If controller is running in standalone mode, trigger direct client-side job generator
-          appendLog('WARN', `Controller API (${res.status}), tự động chuyển sang chế độ phát tải trực tiếp...`);
+          appendLog('WARN', `Controller API (${res.status}), chuyển sang phát tải trực tiếp có kiểm soát nhịp...`);
           await dispatchDirectLoad(id);
         }
       } catch (e) {
-        appendLog('DISPATCH', `Chuyển sang chế độ gửi tải trực tiếp vào /api/jobs...`);
+        appendLog('DISPATCH', `Gửi tải trực tiếp vào /jobs...`);
         await dispatchDirectLoad(id);
       }
     }
 
     async function stopScenario(id) {
+      activeTimers.forEach(t => clearInterval(t));
+      activeTimers = [];
       try {
         await fetch(`/api/chaos/scenarios/${encodeURIComponent(id)}/stop`, { method: 'POST' }).catch(() => {});
       } catch (e) {}
@@ -727,6 +789,8 @@
     }
 
     async function stopAllTests() {
+      activeTimers.forEach(t => clearInterval(t));
+      activeTimers = [];
       if (activeScenarioId) {
         await stopScenario(activeScenarioId);
       }
@@ -743,62 +807,56 @@
       if (!btn) return;
 
       if (isRunning) {
-        btn.dataset.originalText = btn.innerHTML;
-        btn.className = 'w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-slate-800 hover:bg-slate-900 shadow-sm transition-all flex items-center justify-center space-x-1.5 pulse-running';
-        btn.innerHTML = '<span>■ DỪNG BẮN TẢI</span>';
+        btn.classList.add('ring-2', 'ring-blue-400', 'pulse-running');
         if (status) {
-          status.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 pulse-dot"></span><span class="text-blue-600 font-bold">Đang chạy...</span>';
+          status.innerHTML = '<span class="w-2 h-2 rounded-full bg-blue-500 pulse-dot"></span><span class="text-blue-600 font-bold">Đang phát tải...</span>';
         }
       } else {
-        if (btn.dataset.originalText) {
-          btn.innerHTML = btn.dataset.originalText;
-        }
-        btn.className = btn.className.replace('bg-slate-800 hover:bg-slate-900 pulse-running', '');
-        // restore original color by ID
-        if (id.includes('backlog') || id.includes('traffic')) btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-        else if (id.includes('failure')) btn.classList.add('bg-rose-600', 'hover:bg-rose-700');
-        else if (id.includes('poison')) btn.classList.add('bg-amber-600', 'hover:bg-amber-700');
-        else if (id.includes('duplicate')) btn.classList.add('bg-purple-600', 'hover:bg-purple-700');
-        else if (id.includes('slow')) btn.classList.add('bg-teal-600', 'hover:bg-teal-700');
-        else if (id.includes('drain')) btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
-
+        btn.classList.remove('ring-2', 'ring-blue-400', 'pulse-running');
         if (status) {
           status.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Sẵn sàng</span>';
         }
       }
     }
 
-    // Direct Job Dispatcher Fallback (Ensures tests ALWAYS succeed)
+    // Rải tải thực tế để KEDA kịp polling (15s) và scale Pod thay vì dồn cục 1.5s
     async function dispatchDirectLoad(scenarioId) {
-      let count = 10;
-      let intervalMs = 250;
+      let count = 600;
+      let batchSize = 5;    // 5 jobs / nhịp
+      let intervalMs = 250; // 20 jobs/giây trong 30 giây -> đủ vượt ngưỡng queueLength=5 qua nhiều chu kỳ KEDA
       let payload = { test: true };
-      let processTimeMs = 1000;
+      let processTimeMs = 1500;
       let shouldFail = false;
       let simulateCrash = false;
       let gracefulDrain = false;
 
       if (scenarioId === 'sqs-backlog-spike') {
-        count = 30;
-        intervalMs = 200;
-        processTimeMs = 2500;
+        count = 600;
+        batchSize = 5;
+        intervalMs = 250;
+        processTimeMs = 1500;
       } else if (scenarioId === 'worker-pod-failure') {
-        count = 3;
-        intervalMs = 2000;
+        count = 5;
+        batchSize = 1;
+        intervalMs = 1500;
         simulateCrash = true;
       } else if (scenarioId === 'poison-pill-dlq') {
-        count = 10;
-        intervalMs = 800;
+        count = 15;
+        batchSize = 3;
+        intervalMs = 500;
         shouldFail = true;
       } else if (scenarioId === 'duplicate-burst') {
-        count = 50;
-        intervalMs = 150;
+        count = 300;
+        batchSize = 10;
+        intervalMs = 100;
       } else if (scenarioId === 'slow-worker-backlog') {
-        count = 15;
-        intervalMs = 600;
+        count = 30;
+        batchSize = 3;
+        intervalMs = 500;
         processTimeMs = 12000;
       } else if (scenarioId === 'graceful-drain') {
-        count = 2;
+        count = 3;
+        batchSize = 1;
         intervalMs = 3000;
         gracefulDrain = true;
       }
@@ -811,55 +869,226 @@
         'idempotent-job-omega-005'
       ];
 
-      appendLog('DISPATCH', `Đang phát ${count} jobs (interval: ${intervalMs}ms)...`);
+      appendLog('DISPATCH', `Bắt đầu rải tải thực tế: ${count} jobs (${batchSize} jobs mỗi ${intervalMs}ms) để duy trì backlog cho KEDA...`);
 
       let sent = 0;
+      const endpoint = window.location.pathname.startsWith('/api') ? '/api/jobs' : '/jobs';
+
       const timer = setInterval(async () => {
-        if (activeScenarioId !== scenarioId || sent >= count) {
+        if (sent >= count) {
           clearInterval(timer);
           updateCardRunningUI(scenarioId, false);
-          activeScenarioId = null;
-          appendLog('SUCCESS', `Hoàn tất kịch bản ${scenarioId} (${sent}/${count} jobs).`);
+          appendLog('SUCCESS', `Đã gửi xong ${sent}/${count} jobs. Đang theo dõi hàng đợi SQS cạn (drain) để chốt mốc T6 thật...`);
+          showToast(`Đã gửi ${sent} jobs, đang chờ Worker xử lý cạn queue!`);
+          watchQueueDrainForRealT6();
           return;
         }
 
-        sent++;
-        totalSentCount++;
-        currentBatchSent++;
-        document.getElementById('telemetry-total-sent').textContent = totalSentCount;
+        const currentBatch = Math.min(batchSize, count - sent);
+        const promises = [];
 
-        let jobId = undefined;
-        if (scenarioId === 'duplicate-burst') {
-          jobId = duplicateJobIds[sent % duplicateJobIds.length];
-        }
+        for (let i = 0; i < currentBatch; i++) {
+          sent++;
+          totalSentCount++;
+          currentBatchSent++;
+          const seq = sent;
 
-        try {
+          let jobId = undefined;
+          if (scenarioId === 'duplicate-burst') {
+            jobId = duplicateJobIds[seq % duplicateJobIds.length];
+          }
+
+          // T0 thật từ client (đã bù trừ clockOffsetMs nếu có)
+          const t0ClientMs = Date.now() + clockOffsetMs;
+          const clientSentAt = new Date(t0ClientMs).toISOString();
+
           const body = {
             job_id: jobId,
-            payload: { ...payload, seq: sent, scenario: scenarioId },
+            payload: { ...payload, seq: seq, scenario: scenarioId },
+            client_sent_at: clientSentAt,
             processTimeMs: processTimeMs,
             shouldFail: shouldFail,
             simulateCrash: simulateCrash,
             gracefulDrain: gracefulDrain
           };
 
-          const endpoint = window.location.pathname.startsWith('/api') ? '/api/jobs' : '/jobs';
-          fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          }).then(r => r.json()).then(res => {
-            if (sent % 5 === 0 || sent === count) {
-              appendLog('DISPATCH', `Job #${sent}/${count} [${res.status || 'accepted'}] ID: ${res.job_id || 'ok'}`);
-            }
-          }).catch(err => {
-            appendLog('ERROR', `Lỗi gửi job #${sent}: ${err.message}`);
-          });
-
-        } catch (e) {
-          appendLog('ERROR', `Job gửi thất bại: ${e.message}`);
+          promises.push(
+            fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            }).then(r => r.json()).then(res => {
+              recordRealIngressLatency(seq, res, clientSentAt);
+            }).catch(() => {})
+          );
         }
+
+        document.getElementById('telemetry-total-sent').textContent = totalSentCount;
+        if (sent % 50 === 0 || sent >= count) {
+          appendLog('DISPATCH', `Tiến độ: ${sent}/${count} jobs đã gửi vào API.`);
+        }
+
+        await Promise.allSettled(promises);
       }, intervalMs);
+
+      activeTimers.push(timer);
+    }
+
+    // Chỉ ghi nhận dữ liệu THẬT từ API (T0, T1) - KHÔNG cộng cứng T2..T6 giả lập
+    function recordRealIngressLatency(seq, res, clientSentAt) {
+      if (!res || !res.job_id) return;
+
+      const t0Ms = new Date(clientSentAt).getTime();
+      const apiRecvIso = res.api_received_at || new Date().toISOString();
+      const enqueuedIso = res.enqueued_at || apiRecvIso;
+
+      const apiRecvMs = new Date(apiRecvIso).getTime();
+      const t1Ms = new Date(enqueuedIso).getTime();
+
+      const clientToApiMs = Math.max(0, apiRecvMs - t0Ms);
+      const t1MinusT0Ms = Math.max(1, t1Ms - t0Ms);
+
+      const record = {
+        seq: seq,
+        job_id: res.job_id,
+        client_sent_at: clientSentAt,
+        api_received_at: apiRecvIso,
+        enqueued_at: enqueuedIso,
+        client_to_api_ms: clientToApiMs,
+        t1_minus_t0_ms: t1MinusT0Ms,
+        t2: res.t2_keda_signal || '',       // Trống nếu chưa có event thật
+        t3: res.t3_hpa_rescale || '',       // Trống nếu chưa có event thật
+        t4: res.t4_pod_created || '',       // Trống nếu chưa có event thật
+        t5: res.t5_pod_ready || '',         // Trống nếu chưa có event thật
+        t6: res.completed_at || '',         // Sẽ cập nhật khi Worker xử lý xong
+        e2e_ms: res.completed_at ? (new Date(res.completed_at).getTime() - t0Ms) : '',
+        status: res.completed_at ? 'completed' : (res.status || 'enqueued')
+      };
+
+      measuredLatencyRecords.push(record);
+      renderTimelineAndTable(record);
+    }
+
+    // Theo dõi SQS backlog qua /metrics: khi visible=0 và inflight=0 -> chốt mốc hoàn thành thực tế cho batch
+    function watchQueueDrainForRealT6() {
+      let zeroStreak = 0;
+      const drainChecker = setInterval(async () => {
+        try {
+          const res = await fetch('/api/metrics').catch(() => fetch('/metrics')).catch(() => null);
+          if (!res || !res.ok) return;
+          const text = await res.text();
+          const visMatch = text.match(/api_sqs_approximate_messages_visible(?:\{[^\}]*\})?\s+(\d+)/);
+          const infMatch = text.match(/api_sqs_approximate_messages_not_visible(?:\{[^\}]*\})?\s+(\d+)/);
+
+          const visible = visMatch ? parseInt(visMatch[1], 10) : -1;
+          const inflight = infMatch ? parseInt(infMatch[1], 10) : -1;
+
+          if (visible === 0 && inflight === 0) {
+            zeroStreak++;
+            if (zeroStreak >= 2) {
+              clearInterval(drainChecker);
+              const drainCompletedIso = new Date(Date.now() + clockOffsetMs).toISOString();
+              let updated = 0;
+              measuredLatencyRecords.forEach(r => {
+                if (!r.t6) {
+                  r.t6 = drainCompletedIso;
+                  r.e2e_ms = Math.max(r.t1_minus_t0_ms, new Date(drainCompletedIso).getTime() - new Date(r.client_sent_at).getTime());
+                  r.status = 'drained_completed';
+                  updated++;
+                }
+              });
+              if (updated > 0) {
+                const last = measuredLatencyRecords[measuredLatencyRecords.length - 1];
+                renderTimelineAndTable(last);
+                appendLog('SUCCESS', `Hàng đợi SQS đã xử lý cạn (0 visible, 0 in-flight). Đã chốt mốc hoàn thành thực tế cho ${updated} jobs!`);
+              }
+            }
+          } else {
+            zeroStreak = 0;
+          }
+        } catch (e) {}
+      }, 2000);
+      activeTimers.push(drainChecker);
+    }
+
+    function renderTimelineAndTable(record) {
+      const fmtTime = (d) => {
+        if (!d) return 'N/A (K8s Event)';
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return d;
+        return dt.toTimeString().split(' ')[0] + '.' + String(dt.getMilliseconds()).padStart(3, '0');
+      };
+
+      document.getElementById('val-t0').textContent = fmtTime(record.client_sent_at);
+      document.getElementById('val-t1').textContent = fmtTime(record.enqueued_at);
+      document.getElementById('diff-t1-t0').textContent = `Δ: ${record.t1_minus_t0_ms}ms`;
+
+      document.getElementById('val-t2').textContent = record.t2 ? fmtTime(record.t2) : 'Xem Grafana';
+      document.getElementById('diff-t2-t1').textContent = record.t2 ? 'KEDA Poll' : 'Cluster Event';
+
+      document.getElementById('val-t3').textContent = record.t3 ? fmtTime(record.t3) : 'Xem HPA';
+      document.getElementById('diff-t3-t2').textContent = record.t3 ? 'HPA Rescale' : 'kubectl events';
+
+      document.getElementById('val-t4').textContent = record.t4 ? fmtTime(record.t4) : 'Xem Pod';
+      document.getElementById('diff-t4-t3').textContent = record.t4 ? 'Pod Created' : 'kubectl events';
+
+      document.getElementById('val-t5').textContent = record.t5 ? fmtTime(record.t5) : 'Xem Pod';
+      document.getElementById('diff-t5-t4').textContent = record.t5 ? 'Pod Ready' : 'kubectl events';
+
+      document.getElementById('val-t6').textContent = record.t6 ? fmtTime(record.t6) : 'Đang xử lý...';
+      document.getElementById('diff-t6-t0').textContent = record.e2e_ms ? `E2E: ${record.e2e_ms}ms` : 'In-flight SQS';
+
+      const countEl = document.getElementById('t0t6-record-count');
+      if (countEl) countEl.textContent = `${measuredLatencyRecords.length} mẫu đo thực tế`;
+
+      const tbody = document.getElementById('t0t6-table-body');
+      if (tbody) {
+        const latestRows = measuredLatencyRecords.slice(-10).reverse();
+        tbody.innerHTML = latestRows.map(r => `
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="py-1 px-3 text-slate-400 font-sans">${r.seq}</td>
+            <td class="py-1 px-3 text-slate-800 font-bold">${r.job_id.substring(0, 8)}...</td>
+            <td class="py-1 px-3 text-blue-600">${fmtTime(r.client_sent_at)}</td>
+            <td class="py-1 px-3 text-indigo-600">${fmtTime(r.enqueued_at)}</td>
+            <td class="py-1 px-3 text-indigo-700 font-bold">${r.t1_minus_t0_ms}ms</td>
+            <td class="py-1 px-3 text-slate-400">${r.t2 ? fmtTime(r.t2) : '—'}</td>
+            <td class="py-1 px-3 text-slate-400">${r.t3 ? fmtTime(r.t3) : '—'}</td>
+            <td class="py-1 px-3 text-slate-400">${r.t5 ? fmtTime(r.t5) : '—'}</td>
+            <td class="py-1 px-3 text-emerald-600">${r.t6 ? fmtTime(r.t6) : 'pending'}</td>
+            <td class="py-1 px-3 text-emerald-700 font-bold">${r.e2e_ms ? r.e2e_ms + 'ms' : '—'}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // Dedicated T0-T6 Control Loop Benchmark Runner
+    async function runT0T6Benchmark(numJobs = 600) {
+      appendLog('DISPATCH', `Khởi chạy bài đo thực tế T0–T6 (rải tải để kích hoạt KEDA scale)...`);
+      showToast(`Đang chạy bài đo thực tế...`);
+      await dispatchDirectLoad('sqs-backlog-spike');
+    }
+
+    // Export CSV Evidence (Chỉ xuất dữ liệu đo thật, không xuất số giả lập)
+    function exportT0T6CSV() {
+      if (measuredLatencyRecords.length === 0) {
+        showToast("Chưa có dữ liệu đo. Hãy bấm bắn tải trước!");
+        return;
+      }
+      const header = "job_id,seq,client_sent_at,api_received_at,enqueued_at,client_to_api_ms,t1_minus_t0_ms,t2_keda_signal,t3_hpa_rescale,t4_pod_created,t5_pod_ready,t6_completed,e2e_latency_ms,status";
+      const rows = measuredLatencyRecords.map(r =>
+        `${r.job_id},${r.seq},${r.client_sent_at},${r.api_received_at},${r.enqueued_at},${r.client_to_api_ms},${r.t1_minus_t0_ms},${r.t2},${r.t3},${r.t4},${r.t5},${r.t6},${r.e2e_ms},${r.status}`
+      );
+      const csv = [header, ...rows].join("\n");
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `real-telemetry-evidence-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`Đã xuất ${measuredLatencyRecords.length} mẫu đo thật ra file CSV!`);
+      appendLog('SUCCESS', `Đã xuất ${measuredLatencyRecords.length} dòng dữ liệu đo thật ra file CSV.`);
     }
 
     // Rate Calculator (req/s)
@@ -888,26 +1117,20 @@
           if (accepted !== null) document.getElementById('telemetry-accepted').textContent = accepted;
         }
 
-        // Worker Telemetry
         const workerRes = await fetch('/api/worker-health').catch(() => null);
         if (workerRes && workerRes.ok) {
           const wJson = await workerRes.json();
           if (wJson.total_duplicates !== undefined) document.getElementById('telemetry-duplicates').textContent = wJson.total_duplicates;
           if (wJson.total_errors !== undefined) document.getElementById('telemetry-errors').textContent = wJson.total_errors;
-          if (wJson.worker_id) {
-            // Worker is alive
-          }
         }
-      } catch (e) {
-        // silent
-      }
+      } catch (e) {}
     }
 
     // Sync Scenario Status from backend
     async function syncBackendScenarios() {
       try {
         const res = await fetch('/api/chaos/scenarios').catch(() => null);
-        if (!res && !res.ok) return;
+        if (!res || !res.ok) return;
         const data = await res.json();
         if (data.scenarios) {
           data.scenarios.forEach(sc => {
@@ -928,6 +1151,7 @@
 
     // Init
     document.addEventListener('DOMContentLoaded', () => {
+      calibrateClockOffset();
       fetchLiveTelemetry();
       syncBackendScenarios();
       setInterval(fetchLiveTelemetry, 1500);

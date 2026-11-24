@@ -73,6 +73,7 @@ collection_duration_seconds=$CollectionDurationSeconds
 "observed_at_utc`tdesired_replicas`tready_replicas`tavailable_replicas" | Set-Content -Path (Join-Path $EvidenceDir "replicas.tsv") -Encoding utf8
 "observed_at_utc`tpod_name`tcreation_timestamp`tready_status`tready_transition_time`tnode_name" | Set-Content -Path (Join-Path $EvidenceDir "worker-pod-observations.tsv") -Encoding utf8
 "observed_at_utc`tvisible_messages`tin_flight_messages`tdelayed_messages" | Set-Content -Path (Join-Path $EvidenceDir "sqs-attributes.tsv") -Encoding utf8
+New-Item -ItemType File -Path (Join-Path $EvidenceDir "kubernetes-events.jsonl") -Force | Out-Null
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  CONTROL LOOP LATENCY COLLECTOR (T0–T6)" -ForegroundColor Yellow
@@ -96,6 +97,9 @@ kubectl --context $KubeContext get nodes -L topology.kubernetes.io/zone | Out-Fi
 # Background Log Streaming Jobs
 Write-Host "Starting background log streaming..." -ForegroundColor Green
 $logJobs = @()
+$observedEventVersions = @{}
+$kubernetesEventsPath = Join-Path $EvidenceDir "kubernetes-events.jsonl"
+$kubernetesEventsErrorsPath = Join-Path $EvidenceDir "kubernetes-events-errors.log"
 
 $logJobs += Start-Job -ScriptBlock {
     param($ctx, $ns, $out)
@@ -128,7 +132,7 @@ $logJobs += Start-Job -ScriptBlock {
         } catch {
             "$_" | Out-File -FilePath $errLog -Append -Encoding utf8
         }
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 2
     }
 } -ArgumentList $QueueUrl, $AwsRegion, (Join-Path $EvidenceDir "sqs-attributes.tsv"), (Join-Path $EvidenceDir "aws-errors.log")
 
@@ -139,10 +143,16 @@ function Cleanup-And-Exit {
         Remove-Job $j -ErrorAction SilentlyContinue | Out-Null
     }
 
+    Write-Host "Fetching final complete container logs..." -ForegroundColor Green
+    kubectl --context $KubeContext -n $Namespace logs -l app=api-service --all-containers=true --prefix=true --timestamps=true --tail=3000 | Out-File (Join-Path $EvidenceDir "api.log") -Append -Encoding utf8
+    kubectl --context $KubeContext -n $Namespace logs -l app=worker-service --all-containers=true --prefix=true --timestamps=true --tail=3000 | Out-File (Join-Path $EvidenceDir "worker.log") -Append -Encoding utf8
+    kubectl --context $KubeContext -n keda logs deployment/keda-operator --all-containers=true --prefix=true --timestamps=true --tail=3000 | Out-File (Join-Path $EvidenceDir "keda-operator.log") -Append -Encoding utf8
+
     kubectl --context $KubeContext -n $Namespace get pods -o wide | Out-File (Join-Path $EvidenceDir "pods-after.txt") -Encoding utf8
     kubectl --context $KubeContext -n $Namespace get hpa,scaledobject -o yaml | Out-File (Join-Path $EvidenceDir "autoscaler-after.yaml") -Encoding utf8
     kubectl --context $KubeContext -n $Namespace get events --sort-by=.metadata.creationTimestamp | Out-File (Join-Path $EvidenceDir "app-events.txt") -Encoding utf8
     kubectl --context $KubeContext -n $Namespace get events -o json | Out-File (Join-Path $EvidenceDir "app-events.json") -Encoding utf8
+    kubectl --context $KubeContext -n keda get events -o json | Out-File (Join-Path $EvidenceDir "keda-events.json") -Encoding utf8
     kubectl --context $KubeContext -n $Namespace get pods -l app=worker-service -o json | Out-File (Join-Path $EvidenceDir "worker-pods.json") -Encoding utf8
     
     $finishedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -151,7 +161,7 @@ function Cleanup-And-Exit {
     Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host "✅ Evidence collection complete!" -ForegroundColor Green
     Write-Host "   Saved in: $EvidenceDir"
-    Write-Host "   Analyze via: node scripts/metrics/analyze-control-loop-latency.js $EvidenceDir" -ForegroundColor Yellow
+    Write-Host "   Analyze via: python scripts/metrics/analyze-control-loop-latency.py $EvidenceDir" -ForegroundColor Yellow
     Write-Host "==========================================================" -ForegroundColor Cyan
 }
 
@@ -168,22 +178,56 @@ try {
         $now = (Get-Date).ToUniversalTime().ToString("o")
         
         # 1. Sample Worker deployment replicas
-        $replicasJson = kubectl --context $KubeContext -n $Namespace get deployment worker-service `
-            -o jsonpath='{.spec.replicas}{"\t"}{.status.readyReplicas}{"\t"}{.status.availableReplicas}' 2>$null
-        if ($replicasJson) {
-            "$now`t$replicasJson" | Out-File -FilePath (Join-Path $EvidenceDir "replicas.tsv") -Append -Encoding utf8
-        }
+        try {
+            $depJson = kubectl --context $KubeContext -n $Namespace get deployment worker-service -o json 2>$null
+            if ($depJson) {
+                $dep = $depJson | ConvertFrom-Json
+                $des = if ($dep.spec.replicas) { $dep.spec.replicas } else { 0 }
+                $rdy = if ($dep.status.readyReplicas) { $dep.status.readyReplicas } else { 0 }
+                $avl = if ($dep.status.availableReplicas) { $dep.status.availableReplicas } else { 0 }
+                "$now`t$des`t$rdy`t$avl" | Out-File -FilePath (Join-Path $EvidenceDir "replicas.tsv") -Append -Encoding utf8
+            }
+        } catch {}
 
         # 2. Sample Pod states
-        $podObservations = kubectl --context $KubeContext -n $Namespace get pods -l app=worker-service `
-            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.creationTimestamp}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\t"}{.status.conditions[?(@.type=="Ready")].lastTransitionTime}{"\t"}{.spec.nodeName}{"\n"}{end}' 2>$null
-        if ($podObservations) {
-            $lines = $podObservations -split "`n"
-            foreach ($line in $lines) {
-                if ($line.Trim()) {
-                    "$now`t$($line.Trim())" | Out-File -FilePath (Join-Path $EvidenceDir "worker-pod-observations.tsv") -Append -Encoding utf8
+        try {
+            $podsRaw = kubectl --context $KubeContext -n $Namespace get pods -l app=worker-service -o json 2>$null
+            if ($podsRaw) {
+                $pods = $podsRaw | ConvertFrom-Json
+                foreach ($item in $pods.items) {
+                    $pName = $item.metadata.name
+                    $pCreated = $item.metadata.creationTimestamp
+                    $rCond = $item.status.conditions | Where-Object { $_.type -eq 'Ready' }
+                    $rStatus = if ($rCond) { $rCond.status } else { 'False' }
+                    $rTrans = if ($rCond) { $rCond.lastTransitionTime } else { '' }
+                    $pNode = $item.spec.nodeName
+                    "$now`t$pName`t$pCreated`t$rStatus`t$rTrans`t$pNode" | Out-File -FilePath (Join-Path $EvidenceDir "worker-pod-observations.tsv") -Append -Encoding utf8
                 }
             }
+        } catch {}
+
+        # Preserve event changes while the experiment runs; final snapshots alone can miss expired events.
+        try {
+            foreach ($eventNamespace in @($Namespace, 'keda')) {
+                $eventsRaw = kubectl --context $KubeContext -n $eventNamespace get events -o json 2>$null
+                if ($eventsRaw) {
+                    $eventList = ($eventsRaw | ConvertFrom-Json).items
+                    foreach ($event in $eventList) {
+                        $eventVersion = "$($event.metadata.uid):$($event.metadata.resourceVersion)"
+                        if (-not $observedEventVersions.ContainsKey($eventVersion)) {
+                            $observedEventVersions[$eventVersion] = $true
+                            $record = [ordered]@{
+                                observed_at_utc = $now
+                                event = $event
+                            }
+                            ConvertTo-Json -InputObject $record -Compress -Depth 20 |
+                                Add-Content -Path $kubernetesEventsPath -Encoding utf8
+                        }
+                    }
+                }
+            }
+        } catch {
+            "$now`t$_" | Out-File -FilePath $kubernetesEventsErrorsPath -Append -Encoding utf8
         }
 
         if ($CollectionDurationSeconds -gt 0) {

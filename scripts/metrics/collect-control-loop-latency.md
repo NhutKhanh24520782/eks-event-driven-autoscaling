@@ -39,13 +39,13 @@ bash scripts/metrics/collect-control-loop-latency.sh
 The script requires its context to match the currently active context. It
 captures timestamped API, worker, and KEDA logs; one-second desired/ready
 replica samples; five-second SQS visible/in-flight/delayed samples; initial
-and final autoscaler/Pod snapshots; events; and a run manifest. It creates
+and final autoscaler/Pod snapshots; live Kubernetes Event updates from `app`
+and `keda`; and a run manifest. It creates
 `docs/evidence/$RUN_ID/` by default. It runs until Ctrl+C; interrupt it only
 after the workload finishes and the queue drains.
 
-The run collector writes `run-events.csv` with a header. If KEDA logs or an
-approved sampled KEDA metric provide the first qualifying scale observation,
-record one row such as:
+The run collector writes `run-events.csv` with a header. If an actual KEDA operator log or Prometheus metric provides the first
+qualifying scale observation, record one row such as:
 
 ```csv
 T2,2026-01-02T03:04:05.000Z,keda operator log,15000
@@ -83,9 +83,11 @@ k6 run \
   -e RUN_ID="$RUN_ID" \
   -e K6_PROFILE=load \
   -e PEAK_VUS=10 \
-  -e RAMP_UP_DURATION=30s \
-  -e HOLD_DURATION=60s \
+  -e BASELINE_DURATION=30s \
+  -e RAMP_UP_DURATION=60s \
+  -e HOLD_DURATION=120s \
   -e RAMP_DOWN_DURATION=30s \
+  -e REQUEST_PAUSE_SECONDS=1 \
   -e PROCESS_TIME_MS=1000 \
   --out "csv=docs/evidence/$RUN_ID/k6.csv" \
   scripts/load-test/k6-workload.js
@@ -103,12 +105,13 @@ After Ctrl+C stops the collector, derive job- and run-level CSVs:
 python scripts/metrics/analyze-control-loop-latency.py "docs/evidence/$RUN_ID"
 ```
 
-The analyzer correlates API `api_received_at`/`enqueued_at` and worker
-`completed_at`/`duration_ms` fields by `job_id`. It computes job API-to-SQS,
-successful worker processing, and end-to-end intervals; T3 from the first
-sampled desired-replica increase; and T4/T5 from new worker Pod creation and
-Ready timestamps. It reports missing marks. Review Pod events and the run
-timeline to ensure the selected new Pod belongs to this experiment.
+The analyzer correlates k6 `client_sent_at`, API `enqueued_at`, and Worker
+`completed_at`/`duration_ms` by `job_id`; API `api_received_at` is retained
+separately for negative clock-skew checks. It writes job T0/T1/T6 rows to
+`job-latencies.csv` and system-level T2-T5 rows to `scale-events.csv`.
+T3 comes from an actual HPA `SuccessfulRescale` event, and T4/T5 from the new
+worker Pod's Kubernetes creation and Ready timestamps. T2/T3 remain blank if
+the corresponding event was not captured; replica samples are for charts only.
 
 Before sharing, save a Grafana screenshot next to the CSVs and add a short
 `summary.md` with the run settings, queue and replica outcomes, percentiles,

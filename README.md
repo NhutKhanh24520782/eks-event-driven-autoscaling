@@ -354,6 +354,7 @@ In a separate terminal window:
 
 * **Frontend Web:** `kubectl port-forward svc/frontend-service 8080:80 -n app` -> Open `http://localhost:8080`
 * **Grafana Dashboard:** `kubectl port-forward svc/monitoring-grafana 3000:80 -n observability` -> Open `http://localhost:3000` (`admin` / `admin123`)
+* **prometheus:** `kubectl port-forward svc/monitoring-prometheus 9090:9090 -n observability` -> Open `http://localhost:9090` 
 
 #### 7.3 Run k6 Load Test
 

@@ -418,7 +418,11 @@ resource "helm_release" "keda" {
   wait    = true
   timeout = 300
 
-  depends_on = [module.eks, module.irsa_keda]
+  depends_on = [
+    module.eks,
+    module.irsa_keda,
+    helm_release.alb_controller,
+  ]
 }
 
 # ---------------------------------------------------------------------------

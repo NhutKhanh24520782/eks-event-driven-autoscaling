@@ -9,7 +9,16 @@ spec:
   pollingInterval: 15
   cooldownPeriod: 60
   minReplicaCount: 1
-  maxReplicaCount: 4
+  maxReplicaCount: 10
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
   triggers:
     - type: aws-sqs-queue
       metadata:
