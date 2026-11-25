@@ -28,7 +28,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-for command in kubectl aws date sleep mkdir grep tee; do
+for command in kubectl aws date sleep mkdir grep tee tr; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "ERROR: Required command '$command' was not found." >&2
     exit 1
@@ -92,6 +92,7 @@ printf 'observed_at_utc\tpod_name\tcreation_timestamp\tready_status\tready_trans
   > "$EVIDENCE_DIR/worker-pod-observations.tsv"
 printf 'observed_at_utc\tvisible_messages\tin_flight_messages\tdelayed_messages\n' \
   > "$EVIDENCE_DIR/sqs-attributes.tsv"
+: > "$EVIDENCE_DIR/kubernetes-events.jsonl"
 
 kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods -o wide \
   > "$EVIDENCE_DIR/pods-before.txt"
@@ -161,6 +162,8 @@ cleanup() {
     --sort-by=.metadata.creationTimestamp > "$EVIDENCE_DIR/app-events.txt"
   kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get events -o json \
     > "$EVIDENCE_DIR/app-events.json"
+  kubectl --context "$KUBE_CONTEXT" -n keda get events -o json \
+    > "$EVIDENCE_DIR/keda-events.json"
   kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods \
     -l app=worker-service -o json > "$EVIDENCE_DIR/worker-pods.json"
   printf 'finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
@@ -194,6 +197,10 @@ while true; do
         >> "$EVIDENCE_DIR/worker-pod-observations.tsv"
     done <<< "$pod_observations"
   fi
+  for event_namespace in "$NAMESPACE" keda; do
+    event_snapshot="$(kubectl --context "$KUBE_CONTEXT" -n "$event_namespace" get events -o json | tr -d '\r\n')"
+    printf '%s\n' "$event_snapshot" >> "$EVIDENCE_DIR/kubernetes-events.jsonl"
+  done
   if (( COLLECTION_DURATION_SECONDS > 0 &&
         SECONDS - collection_started_seconds >= COLLECTION_DURATION_SECONDS )); then
     break

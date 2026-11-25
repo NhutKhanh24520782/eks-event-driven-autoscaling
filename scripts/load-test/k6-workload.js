@@ -27,12 +27,13 @@ const BASELINE_VUS = positiveInteger('BASELINE_VUS', 1, 50);
 const PEAK_VUS = positiveInteger('PEAK_VUS', 10, 50);
 const SPIKE_VUS = positiveInteger('SPIKE_VUS', 20, 50);
 const BASELINE_DURATION = durationValue('BASELINE_DURATION', '30s');
-const RAMP_UP_DURATION = durationValue('RAMP_UP_DURATION', '30s');
-const HOLD_DURATION = durationValue('HOLD_DURATION', '60s');
+const RAMP_UP_DURATION = durationValue('RAMP_UP_DURATION', '60s');
+const HOLD_DURATION = durationValue('HOLD_DURATION', '120s');
 const RAMP_DOWN_DURATION = durationValue('RAMP_DOWN_DURATION', '30s');
 const SOAK_DURATION = durationValue('SOAK_DURATION', '3m');
 const REQUEST_PAUSE_SECONDS = Number(__ENV.REQUEST_PAUSE_SECONDS || (PROFILE === 'smoke' ? 0.1 : 1));
 const FAILURE_RATE = Math.min(1.0, Math.max(0.0, Number(__ENV.FAILURE_RATE || 0.0)));
+const TIMESTAMP_PRECISION_GUARD_MS = 2;
 
 const VALID_PROFILES = ['smoke', 'baseline', 'load', 'spike', 'stress', 'soak'];
 if (!VALID_PROFILES.includes(PROFILE)) {
@@ -59,6 +60,7 @@ const stagesByProfile = {
     { duration: '5s', target: 0 },
   ],
   load: [
+    { duration: BASELINE_DURATION, target: 1 },
     { duration: RAMP_UP_DURATION, target: PEAK_VUS },
     { duration: HOLD_DURATION, target: PEAK_VUS },
     { duration: RAMP_DOWN_DURATION, target: 0 },
@@ -92,8 +94,50 @@ export const options = {
   },
 };
 
-export default function () {
-  const clientSentAt = new Date().toISOString();
+export function setup() {
+  let bestSample = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const sentAt = Date.now();
+    const res = http.get(`${API_URL}/health`, { tags: { endpoint: 'clock-sync' } });
+    const receivedAt = Date.now();
+    if (res.status !== 200) {
+      throw new Error(`Clock sync health check failed with HTTP ${res.status}`);
+    }
+
+    const response = res.json();
+    const serverTime = response && response.timestamp
+      ? new Date(response.timestamp).getTime()
+      : NaN;
+    if (!Number.isFinite(serverTime)) {
+      throw new Error('Clock sync health response did not contain a valid timestamp');
+    }
+
+    const roundTripMs = receivedAt - sentAt;
+    const sample = {
+      clockSkewMs: Math.round(serverTime - ((sentAt + receivedAt) / 2)) - TIMESTAMP_PRECISION_GUARD_MS,
+      clockUncertaintyMs: Math.ceil(roundTripMs / 2) + TIMESTAMP_PRECISION_GUARD_MS,
+      roundTripMs,
+    };
+    if (!bestSample || sample.roundTripMs < bestSample.roundTripMs) {
+      bestSample = sample;
+    }
+  }
+
+  if (!bestSample || bestSample.roundTripMs > 2000) {
+    throw new Error('Clock sync failed: no API health response within 2000ms');
+  }
+
+  console.log(
+    `Clock offset estimated at ${bestSample.clockSkewMs}ms ` +
+    `(uncertainty <= ${bestSample.clockUncertaintyMs}ms, best RTT ${bestSample.roundTripMs}ms)`
+  );
+  return bestSample;
+}
+
+export default function (data) {
+  const clockSkewMs = (data && typeof data.clockSkewMs === 'number') ? data.clockSkewMs : 0;
+  // Align client timestamps to the API clock using the bounded setup-time estimate.
+  const clientSentAt = new Date(Date.now() + clockSkewMs).toISOString();
   const jobId = `${RUN_ID}-vu${__VU}-iter${__ITER}`;
   const shouldFail = FAILURE_RATE > 0 && Math.random() < FAILURE_RATE;
   const payload = JSON.stringify({

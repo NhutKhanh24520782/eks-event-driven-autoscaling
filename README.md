@@ -21,7 +21,7 @@ Client
 AWS ALB -> API Service (EKS) -> Amazon SQS + DLQ -> Worker Deployment
                                                    ^       |
                                                    |       +-> /metrics
-                                             KEDA (optional)
+                                             KEDA 
 
 Prometheus Operator -> Prometheus -> Grafana
 Kubernetes logs -> Promtail -> Loki -> Grafana
@@ -395,6 +395,8 @@ Import `observability\grafana\dashboards\worker-monitoring.json`. The dashboard
 shows worker counters/gauges, SQS queue depth, Kubernetes replicas, processing
 latency, and Pod readiness. T0–T6 event latency is available in the collected
 experiment evidence.
+
+![Multi-AZ EKS Event-Driven Autoscaling Master Dashboard](docs/images/grafana-master-dashboard.jpg)
 
 ### 8. Smoke test and load test
 

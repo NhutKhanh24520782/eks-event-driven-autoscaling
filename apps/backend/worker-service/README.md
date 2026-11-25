@@ -18,6 +18,8 @@ the `worker` service account with the dedicated queue-scoped IRSA role.
 - On `shouldFail: true`, records a failure and leaves the message for SQS
   redelivery. Queue redrive policy moves messages to the DLQ after the
   configured receive limit.
+- On `simulateCrash: true`, exits on the first receive to simulate a worker
+  crash, then processes the SQS redelivery normally to avoid repeated crashes.
 - On shutdown, stops polling and waits for active jobs for up to 25 seconds.
 
 ## HTTP endpoints
