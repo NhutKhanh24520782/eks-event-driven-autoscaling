@@ -12,6 +12,8 @@ comparison. Prometheus, Grafana, and Loki provide metrics and log collection.
 
 ## Architecture
 
+![System Architecture](docs/images/system-architecture.jpg)
+
 ```text
 Client
   |
@@ -19,7 +21,7 @@ Client
 AWS ALB -> API Service (EKS) -> Amazon SQS + DLQ -> Worker Deployment
                                                    ^       |
                                                    |       +-> /metrics
-                                             KEDA (optional)
+                                             KEDA 
 
 Prometheus Operator -> Prometheus -> Grafana
 Kubernetes logs -> Promtail -> Loki -> Grafana
@@ -31,6 +33,12 @@ Controller, EBS CSI driver, and an optional KEDA installation. Kubernetes
 workloads are spread across available zones where scheduling capacity permits.
 This project uses managed node groups; it does not configure Karpenter or
 cluster autoscaling.
+
+### EKS Autoscaling & Chaos Test Center (Frontend UI)
+
+The frontend (`apps/frontend`, exposed at the root `/` via ALB Ingress) provides an interactive telemetry dashboard and chaos test center. It displays real-time SQS backlog depth, active worker concurrency, processed/error counts, and offers one-click scenario triggers (KEDA scale-out burst, worker crash injection, poison pill DLQ routing, idempotency deduplication, latency surge, and graceful shutdown):
+
+![EKS Autoscaling & Chaos Test Center](docs/images/chaos-test-center.jpg)
 
 ## Repository map
 
@@ -336,6 +344,10 @@ kubectl apply -f k8s\config\worker-servicemonitor.yaml
 kubectl apply -f k8s\config\grafana-dashboard-master.yaml
 ```
 
+The master dashboard visualizes real-time metrics across workers, SQS queue depth, KEDA autoscaling events, and multi-AZ pod distribution:
+
+![Multi-AZ EKS Event-Driven Autoscaling Master Dashboard](docs/images/grafana-master-dashboard.jpg)
+
 ---
 
 ### Step 7: Verification & Load Testing
@@ -348,65 +360,47 @@ kubectl get pods -n observability
 kubectl get ingress api-ingress -n app
 ```
 
-#### 7.2 Access Services via Port-Forwarding (Local Testing)
+Wait for the ALB address to appear in the Ingress. Confirm API and worker logs
+show successful SQS operations; if a worker reports the node-group role rather
+than its IRSA role, verify the `worker` service account annotation and restart
+the pods.
 
-In a separate terminal window:
+### 6. Enable one autoscaler
 
-* **Frontend Web:** `kubectl port-forward svc/frontend-service 8080:80 -n app` -> Open `http://localhost:8080`
-* **Grafana Dashboard:** `kubectl port-forward svc/monitoring-grafana 3000:80 -n observability` -> Open `http://localhost:3000` (`admin` / `admin123`)
-* **prometheus:** `kubectl port-forward svc/monitoring-prometheus 9090:9090 -n observability` -> Open `http://localhost:9090` 
+**KEDA / SQS (recommended event-driven mode):** set `install_keda = true` in
+`terraform.tfvars`, then run `terraform plan` and `terraform apply`. Verify
+`scaledobjects.keda.sh` exists before applying
+`k8s\autoscaling\keda-scaledobject.yaml`. Set its `queueURL` to the Terraform
+queue output first. KEDA uses its own `keda` IRSA role; the worker uses a
+separate IRSA role.
 
-#### 7.3 Run k6 Load Test
+**CPU HPA (baseline only):** do not apply the KEDA ScaledObject. Install
+Kubernetes Metrics Server separately, verify `kubectl top pods -n app` works,
+then apply `k8s\autoscaling\hpa-baseline.yaml`.
 
-* **Git Bash:**
-  ```bash
-  export TARGET_URL="http://localhost:8080"
-  k6 run scripts/load-test/k6-workload.js
-  ```
-* **PowerShell:**
-  ```powershell
-  $env:TARGET_URL = "http://localhost:8080"
-  k6 run scripts\load-test\k6-workload.js
-  ```
+Never let KEDA and the CPU HPA control `worker-service` at the same time.
+The current worker simulates work with a timer and is not CPU-intensive, so
+the existing k6 workload may not cause the CPU HPA to scale.
 
----
+### 7. Install monitoring
 
-### Step 8: Autoscaling Options
+Follow [`observability/README.md`](observability/README.md). In summary,
+create the `observability` namespace and Grafana credential Secret, install
+the kube-prometheus-stack and Loki/Promtail Helm charts using the provided
+values, then apply `observability\prometheus\api-podmonitor.yaml`. Worker
+metrics use the existing ServiceMonitor in `k8s\config`. Ensure the relevant
+claims use the `gp3` StorageClass and become `Bound`.
 
-* **KEDA / SQS (Recommended Event-Driven):** Set `install_keda = true` in `infra/envs/dev/terraform.tfvars`, run `terraform apply`. Then update `queueURL` in `k8s/autoscaling/keda-scaledobject.yaml` and apply:
-  ```bash
-  kubectl apply -f k8s/autoscaling/keda-scaledobject.yaml
-  ```
-* **CPU HPA (Baseline comparison):** Apply `k8s/autoscaling/hpa-baseline.yaml` without KEDA ScaledObject.
+Import `observability\grafana\dashboards\worker-monitoring.json`. The dashboard
+shows worker counters/gauges, SQS queue depth, Kubernetes replicas, processing
+latency, and Pod readiness. T0–T6 event latency is available in the collected
+experiment evidence.
 
-> [!WARNING]
-> Do not let KEDA and CPU HPA manage `worker-service` simultaneously.
+![Multi-AZ EKS Event-Driven Autoscaling Master Dashboard](docs/images/grafana-master-dashboard.jpg)
 
----
+### 8. Smoke test and load test
 
-### Step 9: Clean Up & Teardown
-
-To avoid AWS `DependencyViolation` errors during VPC deletion, always clean up Kubernetes Ingress (ALB) and storage before running `terraform destroy`:
-
-#### Git Bash
-
-```bash
-# 1. Delete Ingress to remove ALB
-kubectl delete ingress api-ingress -n app
-
-# 2. Delete monitoring resources and PVCs
-helm uninstall monitoring -n observability
-kubectl delete pvc --all -n observability
-kubectl delete pvc --all -n app
-kubectl delete -k k8s
-
-# 3. Destroy Terraform infrastructure
-cd infra/envs/dev
-terraform destroy -auto-approve
-cd ../../../
-```
-
-#### PowerShell
+Get the ALB hostname and run a small test before the staged workload:
 
 ```powershell
 # 1. Delete Ingress to remove ALB
