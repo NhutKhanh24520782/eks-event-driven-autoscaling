@@ -12,6 +12,8 @@ comparison. Prometheus, Grafana, and Loki provide metrics and log collection.
 
 ## Architecture
 
+![System Architecture](docs/images/system-architecture.jpg)
+
 ```text
 Client
   |
@@ -19,7 +21,7 @@ Client
 AWS ALB -> API Service (EKS) -> Amazon SQS + DLQ -> Worker Deployment
                                                    ^       |
                                                    |       +-> /metrics
-                                             KEDA (optional)
+                                             KEDA 
 
 Prometheus Operator -> Prometheus -> Grafana
 Kubernetes logs -> Promtail -> Loki -> Grafana
@@ -32,16 +34,22 @@ workloads are spread across available zones where scheduling capacity permits.
 This project uses managed node groups; it does not configure Karpenter or
 cluster autoscaling.
 
+### EKS Autoscaling & Chaos Test Center (Frontend UI)
+
+The frontend (`apps/frontend`, exposed at the root `/` via ALB Ingress) provides an interactive telemetry dashboard and chaos test center. It displays real-time SQS backlog depth, active worker concurrency, processed/error counts, and offers one-click scenario triggers (KEDA scale-out burst, worker crash injection, poison pill DLQ routing, idempotency deduplication, latency surge, and graceful shutdown):
+
+![EKS Autoscaling & Chaos Test Center](docs/images/chaos-test-center.jpg)
+
 ## Repository map
 
-| Path                                         | Purpose                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| [`apps/`](apps/README.md)                   | Backend services and frontend dashboard                            |
-| [`infra/`](infra/README.md)                 | Terraform bootstrap, EKS environment, and reusable modules         |
-| [`k8s/`](k8s/README.md)                     | Application, storage, ingress, topology, and autoscaling manifests |
-| [`observability/`](observability/README.md) | Prometheus/Grafana, Loki/Promtail, and dashboard                   |
-| [`scripts/`](scripts/README.md)             | Local load test, chaos placeholders, and latency collection notes  |
-| [`docs/`](docs/README.md)                   | Architecture, experiments, fault tolerance, and evidence           |
+| Path | Purpose |
+| --- | --- |
+| [`apps/`](apps/README.md) | Backend services and frontend dashboard |
+| [`infra/`](infra/README.md) | Terraform bootstrap, EKS environment, and reusable modules |
+| [`k8s/`](k8s/README.md) | Application, storage, ingress, topology, and autoscaling manifests |
+| [`observability/`](observability/README.md) | Prometheus/Grafana, Loki/Promtail, and dashboard |
+| [`scripts/`](scripts/README.md) | Local load test, chaos placeholders, and latency collection notes |
+| [`docs/`](docs/README.md) | Architecture, experiments, fault tolerance, and evidence |
 
 ## Requirements
 
@@ -57,372 +65,191 @@ cluster autoscaling.
 Review current AWS pricing before deploying. EKS, EC2, NAT Gateway, EBS,
 load balancers, and data transfer can incur costs even when idle.
 
-## Deployment Guide (End-to-End)
+## Deployment
 
-Follow this step-by-step guide to deploy the entire project onto Amazon EKS from scratch. Commands are provided for both **Git Bash** and **PowerShell**.
+### 1. Configure AWS credentials and Terraform inputs
 
----
-
-### Step 1: Configure Environment Variables
-
-Authenticate with your AWS account and set required environment variables.
-
-#### Git Bash
-
-```bash
-aws sts get-caller-identity
-export AWS_REGION="ap-southeast-1"
-export CLUSTER_NAME="multiaz-eks"
-export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-export ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
-echo "Account ID: $ACCOUNT_ID"
-echo "ECR Registry: $ECR_REGISTRY"
-```
-
-#### PowerShell
+Authenticate with an AWS identity that can create the resources above and
+confirm the account:
 
 ```powershell
 aws sts get-caller-identity
-$env:AWS_REGION = "ap-southeast-1"
-$env:CLUSTER_NAME = "multiaz-eks"
-$env:ACCOUNT_ID = (aws sts get-caller-identity --query Account --output text)
-$env:ECR_REGISTRY = "$($env:ACCOUNT_ID).dkr.ecr.$($env:AWS_REGION).amazonaws.com"
-
-Write-Host "Account ID: $env:ACCOUNT_ID"
-Write-Host "ECR Registry: $env:ECR_REGISTRY"
 ```
 
----
+Copy `infra\envs\dev\terraform.tfvars.example` to
+`infra\envs\dev\terraform.tfvars`. Set the intended region, cluster name,
+allowed Kubernetes API CIDRs, administrator principal ARNs, budget email
+addresses, and node sizing. Restrict
+`cluster_endpoint_public_access_cidrs`; do not leave `0.0.0.0/0` for a shared
+or production environment. Keep `terraform.tfvars` and credentials out of Git.
 
-### Step 2: Provision Infrastructure (Terraform)
+KEDA is disabled by default. Keep `install_keda = false` for an initial
+deployment unless you are ready to use the SQS autoscaler.
 
-On the **first run**, initialize the bootstrap resources to create the S3 bucket that stores the Terraform remote state for the current AWS account. Bootstrap only needs to be run once; verify that you are using the intended AWS account before continuing.
+### 2. Prepare Terraform remote state
 
-#### Git Bash
-
-```bash
-aws sts get-caller-identity
-
-# Initialize bootstrap
-terraform -chdir=infra/bootstrap init
-terraform -chdir=infra/bootstrap plan
-terraform -chdir=infra/bootstrap apply
-
-# Get the remote-state S3 bucket name
-terraform -chdir=infra/bootstrap output state_bucket_name
-```
-
-#### PowerShell
+The `infra\bootstrap` configuration creates an encrypted, versioned S3 state
+bucket and a DynamoDB lock table. Bootstrap it once if the configured backend
+does not already exist:
 
 ```powershell
-aws sts get-caller-identity
-
-# Initialize bootstrap
 terraform -chdir=infra\bootstrap init
 terraform -chdir=infra\bootstrap plan
 terraform -chdir=infra\bootstrap apply
-
-# Get the remote-state S3 bucket name
-terraform -chdir=infra\bootstrap output state_bucket_name
+terraform -chdir=infra\bootstrap output
 ```
 
-The bucket name follows this format: `multiaz-autoscaling-tfstate-<AWS_ACCOUNT_ID>`. Compare the output with the backend configuration in `infra/envs/dev/versions.tf`; if you are using a new AWS account or a different project/bucket name, update the configuration:
+The dev backend values are in `infra\envs\dev\versions.tf`. Verify that the
+bucket and lock-table names match the bootstrap outputs and that you are using
+the intended account before initializing the dev environment. If changing an
+already initialized backend, stop and determine whether state must be migrated;
+do not use `-reconfigure` or `-migrate-state` as a guess.
 
-```hcl
-backend "s3" {
-  bucket  = "<STATE_BUCKET_NAME>"
-  key     = "envs/dev/terraform.tfstate"
-  region  = "ap-southeast-1"
-  encrypt = true
-}
-```
-
-After bootstrap completes, prepare `infra/envs/dev/terraform.tfvars` (copy it from `terraform.tfvars.example` if it does not exist), then initialize and apply the dev environment.
-
-#### Git Bash
-
-```bash
-cd infra/envs/dev
-terraform init
-terraform plan
-terraform apply -auto-approve
-cd ../../../
-```
-
-#### PowerShell
+### 3. Provision AWS infrastructure
 
 ```powershell
-cd infra\envs\dev
-terraform init
-terraform plan
-terraform apply -auto-approve
-cd ..\..\..
+terraform -chdir=infra\envs\dev init
+terraform -chdir=infra\envs\dev validate
+terraform -chdir=infra\envs\dev plan -out=tfplan
+terraform -chdir=infra\envs\dev apply tfplan
 ```
 
-> [!TIP]
-> Retrieve Terraform outputs anytime with:
-> `terraform -chdir=infra/envs/dev output` (Git Bash) or `terraform -chdir=infra\envs\dev output` (PowerShell).
+Review the plan for the correct AWS account, region, CIDRs, and expected
+resources before applying. This provisions the cluster and supporting
+resources; it can take several minutes and incurs AWS charges.
 
----
-
-### Step 3: Connect kubectl & Install StorageClass
-
-Update `kubeconfig` to connect `kubectl` to EKS, then apply the `gp3` StorageClass for Persistent Volumes (Prometheus/Grafana).
-
-#### Git Bash
-
-```bash
-aws eks update-kubeconfig --region $AWS_REGION --name $CLUSTER_NAME
-kubectl get nodes
-kubectl apply -f k8s/storage/ebs-gp3.yaml
-```
-
-#### PowerShell
+Connect kubectl and verify nodes and the EBS CSI add-on:
 
 ```powershell
-aws eks update-kubeconfig --region $env:AWS_REGION --name $env:CLUSTER_NAME
-kubectl get nodes
+aws eks update-kubeconfig --name multiaz-eks --region ap-southeast-1
+kubectl get nodes -L topology.kubernetes.io/zone
+aws eks describe-addon --cluster-name multiaz-eks --addon-name aws-ebs-csi-driver `
+  --region ap-southeast-1 --query addon.status --output text
 kubectl apply -f k8s\storage\ebs-gp3.yaml
+kubectl get storageclass gp3
 ```
 
----
+Use the actual cluster name and region from your Terraform variables. Wait for
+the EBS CSI add-on to become `ACTIVE` before installing charts that create
+persistent volume claims.
 
-### Step 4: Build & Push Container Images to ECR
+### 4. Build and push application images
 
-Log in to Amazon ECR, then build and push API, Worker, and Frontend images.
-
-#### Git Bash
-
-```bash
-# Log in to ECR
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
-
-# Build & push API Service
-docker build -t ${ECR_REGISTRY}/multiaz-autoscaling/api:latest -f apps/backend/api-service/Dockerfile apps/backend/api-service
-docker push ${ECR_REGISTRY}/multiaz-autoscaling/api:latest
-
-# Build & push Worker Service
-docker build -t ${ECR_REGISTRY}/multiaz-autoscaling/worker:latest -f apps/backend/worker-service/Dockerfile apps/backend/worker-service
-docker push ${ECR_REGISTRY}/multiaz-autoscaling/worker:latest
-
-# Build & push Frontend (uses nginx.eks.conf for Kubernetes routing)
-docker build --build-arg NGINX_CONFIG=nginx.eks.conf -t ${ECR_REGISTRY}/multiaz-autoscaling/frontend:latest -f apps/frontend/Dockerfile apps/frontend
-docker push ${ECR_REGISTRY}/multiaz-autoscaling/frontend:latest
-```
-
-#### PowerShell
+Read Terraform outputs:
 
 ```powershell
-# Log in to ECR
-aws ecr get-login-password --region $env:AWS_REGION | docker login --username AWS --password-stdin $env:ECR_REGISTRY
-
-# Build & push API Service
-docker build -t "$($env:ECR_REGISTRY)/multiaz-autoscaling/api:latest" -f apps\backend\api-service\Dockerfile apps\backend\api-service
-docker push "$($env:ECR_REGISTRY)/multiaz-autoscaling/api:latest"
-
-# Build & push Worker Service
-docker build -t "$($env:ECR_REGISTRY)/multiaz-autoscaling/worker:latest" -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
-docker push "$($env:ECR_REGISTRY)/multiaz-autoscaling/worker:latest"
-
-# Build & push Frontend (uses nginx.eks.conf for Kubernetes routing)
-docker build --build-arg NGINX_CONFIG=nginx.eks.conf -t "$($env:ECR_REGISTRY)/multiaz-autoscaling/frontend:latest" -f apps\frontend\Dockerfile apps\frontend
-docker push "$($env:ECR_REGISTRY)/multiaz-autoscaling/frontend:latest"
+$region = terraform -chdir=infra\envs\dev output -raw region
+$apiImage = terraform -chdir=infra\envs\dev output -raw ecr_api_url
+$workerImage = terraform -chdir=infra\envs\dev output -raw ecr_worker_url
+$frontendImage = "867703356304.dkr.ecr.ap-southeast-1.amazonaws.com/multiaz-autoscaling/frontend"
+$registry = $apiImage.Split('/')[0]
+aws ecr get-login-password --region $region |
+  docker login --username AWS --password-stdin $registry
+docker build -t "${apiImage}:latest" -f apps\backend\api-service\Dockerfile apps\backend\api-service
+docker push "${apiImage}:latest"
+docker build -t "${workerImage}:latest" -f apps\backend\worker-service\Dockerfile apps\backend\worker-service
+docker push "${workerImage}:latest"
+docker build --build-arg NGINX_CONFIG=nginx.eks.conf `
+  -t "${frontendImage}:latest" -f apps\frontend\Dockerfile apps\frontend
+docker push "${frontendImage}:latest"
 ```
 
----
+The EKS nodes need permission to pull from these ECR repositories. For
+repeatable deployments, prefer immutable version tags or commit SHAs over
+`latest`.
 
-### Step 5: Deploy Application Workloads & Annotate IRSA
+### 5. Configure and deploy Kubernetes workloads
 
-Sync the SQS Queue URL into the ConfigMap, apply Kustomize manifests, annotate IAM roles onto ServiceAccounts, and restart pods.
-
-#### Git Bash
-
-```bash
-# 1. Sync Queue URL into ConfigMap
-export QUEUE_URL=$(terraform -chdir=infra/envs/dev output -raw queue_url)
-sed -i "s|QUEUE_URL:.*|QUEUE_URL: ${QUEUE_URL}|g" k8s/config/configmap.yaml
-
-# 2. Apply Kubernetes manifests
-kubectl apply -k k8s
-
-# 3. Annotate ServiceAccounts with IRSA Role ARNs
-export API_ROLE_ARN=$(terraform -chdir=infra/envs/dev output -raw api_role_arn)
-export WORKER_ROLE_ARN=$(terraform -chdir=infra/envs/dev output -raw worker_role_arn)
-kubectl annotate serviceaccount api -n app "eks.amazonaws.com/role-arn=${API_ROLE_ARN}" --overwrite
-kubectl annotate serviceaccount worker -n app "eks.amazonaws.com/role-arn=${WORKER_ROLE_ARN}" --overwrite
-
-# 4. Restart deployments & verify status
-kubectl rollout restart deployment/api-service deployment/worker-service deployment/frontend-service -n app
-kubectl rollout status deployment/api-service -n app
-kubectl rollout status deployment/worker-service -n app
-kubectl rollout status deployment/frontend-service -n app
-```
-
-#### PowerShell
+Before deployment, replace the queue URL placeholder in
+`k8s\config\configmap.yaml` with:
 
 ```powershell
-# 1. Sync Queue URL into ConfigMap
-$queueUrl = terraform -chdir=infra\envs\dev output -raw queue_url
-(Get-Content k8s\config\configmap.yaml) -replace 'QUEUE_URL:.*', "QUEUE_URL: $queueUrl" | Set-Content k8s\config\configmap.yaml
+terraform -chdir=infra\envs\dev output -raw queue_url
+```
 
-# 2. Apply Kubernetes manifests
+The deployment image placeholders are replaced after applying the Kustomize
+manifests. Create the app resources, set the exact images, then annotate the
+service accounts with the Terraform-created IRSA roles:
+
+```powershell
 kubectl apply -k k8s
-
-# 3. Annotate ServiceAccounts with IRSA Role ARNs
 $apiRoleArn = terraform -chdir=infra\envs\dev output -raw api_role_arn
 $workerRoleArn = terraform -chdir=infra\envs\dev output -raw worker_role_arn
-kubectl annotate serviceaccount api -n app "eks.amazonaws.com/role-arn=$apiRoleArn" --overwrite
-kubectl annotate serviceaccount worker -n app "eks.amazonaws.com/role-arn=$workerRoleArn" --overwrite
-
-# 4. Restart deployments & verify status
-kubectl rollout restart deployment/api-service deployment/worker-service deployment/frontend-service -n app
+if ([string]::IsNullOrWhiteSpace($apiRoleArn) -or
+    [string]::IsNullOrWhiteSpace($workerRoleArn)) {
+  throw "Terraform did not return both application IRSA role ARNs."
+}
+kubectl annotate serviceaccount api -n app `
+  "eks.amazonaws.com/role-arn=$apiRoleArn" --overwrite
+kubectl annotate serviceaccount worker -n app `
+  "eks.amazonaws.com/role-arn=$workerRoleArn" --overwrite
+kubectl set image deployment/api-service api="${apiImage}:latest" -n app
+kubectl set image deployment/worker-service worker="${workerImage}:latest" -n app
+# deployment-frontend.yaml already uses frontend:latest; restart to pull its newly pushed image.
+kubectl rollout restart deployment/frontend-service -n app
 kubectl rollout status deployment/api-service -n app
 kubectl rollout status deployment/worker-service -n app
 kubectl rollout status deployment/frontend-service -n app
-```
-
----
-
-### Step 6: Deploy Observability Stack (Prometheus & Grafana)
-
-Install Prometheus & Grafana with Helm, create Grafana credentials, apply Worker ServiceMonitor, and import the master dashboard.
-
-#### Git Bash
-
-```bash
-# 1. Add Helm repo
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# 2. Create namespace and Grafana admin secret
-kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic grafana-admin -n observability \
-  --from-literal=admin-user=admin \
-  --from-literal=admin-password=admin123 \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# 3. Install kube-prometheus-stack
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
-  --namespace observability \
-  --values observability/prometheus-values.yaml
-
-# 4. Apply Worker ServiceMonitor & Master Dashboard
-kubectl apply -f k8s/config/worker-servicemonitor.yaml
-kubectl apply -f k8s/config/grafana-dashboard-master.yaml
-```
-
-#### PowerShell
-
-```powershell
-# 1. Add Helm repo
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# 2. Create namespace and Grafana admin secret
-kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic grafana-admin -n observability `
-  --from-literal=admin-user=admin `
-  --from-literal=admin-password=admin123 `
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# 3. Install kube-prometheus-stack
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack `
-  --namespace observability `
-  --values observability\prometheus-values.yaml
-
-# 4. Apply Worker ServiceMonitor & Master Dashboard
-kubectl apply -f k8s\config\worker-servicemonitor.yaml
-kubectl apply -f k8s\config\grafana-dashboard-master.yaml
-```
-
----
-
-### Step 7: Verification & Load Testing
-
-#### 7.1 Verify Pods & Ingress
-
-```bash
-kubectl get pods -n app
-kubectl get pods -n observability
 kubectl get ingress api-ingress -n app
 ```
 
-#### 7.2 Access Services via Port-Forwarding (Local Testing)
+Wait for the ALB address to appear in the Ingress. Confirm API and worker logs
+show successful SQS operations; if a worker reports the node-group role rather
+than its IRSA role, verify the `worker` service account annotation and restart
+the pods.
 
-In a separate terminal window:
+### 6. Enable one autoscaler
 
-* **Frontend Web:** `kubectl port-forward svc/frontend-service 8080:80 -n app` -> Open `http://localhost:8080`
-* **Grafana Dashboard:** `kubectl port-forward svc/monitoring-grafana 3000:80 -n observability` -> Open `http://localhost:3000` (`admin` / `admin123`)
-* **prometheus:** `kubectl port-forward svc/monitoring-prometheus 9090:9090 -n observability` -> Open `http://localhost:9090` 
+**KEDA / SQS (recommended event-driven mode):** set `install_keda = true` in
+`terraform.tfvars`, then run `terraform plan` and `terraform apply`. Verify
+`scaledobjects.keda.sh` exists before applying
+`k8s\autoscaling\keda-scaledobject.yaml`. Set its `queueURL` to the Terraform
+queue output first. KEDA uses its own `keda` IRSA role; the worker uses a
+separate IRSA role.
 
-#### 7.3 Run k6 Load Test
+**CPU HPA (baseline only):** do not apply the KEDA ScaledObject. Install
+Kubernetes Metrics Server separately, verify `kubectl top pods -n app` works,
+then apply `k8s\autoscaling\hpa-baseline.yaml`.
 
-* **Git Bash:**
-  ```bash
-  export TARGET_URL="http://localhost:8080"
-  k6 run scripts/load-test/k6-workload.js
-  ```
-* **PowerShell:**
-  ```powershell
-  $env:TARGET_URL = "http://localhost:8080"
-  k6 run scripts\load-test\k6-workload.js
-  ```
+Never let KEDA and the CPU HPA control `worker-service` at the same time.
+The current worker simulates work with a timer and is not CPU-intensive, so
+the existing k6 workload may not cause the CPU HPA to scale.
 
----
+### 7. Install monitoring
 
-### Step 8: Autoscaling Options
+Follow [`observability/README.md`](observability/README.md). In summary,
+create the `observability` namespace and Grafana credential Secret, install
+the kube-prometheus-stack and Loki/Promtail Helm charts using the provided
+values, then apply `observability\prometheus\api-podmonitor.yaml`. Worker
+metrics use the existing ServiceMonitor in `k8s\config`. Ensure the relevant
+claims use the `gp3` StorageClass and become `Bound`.
 
-* **KEDA / SQS (Recommended Event-Driven):** Set `install_keda = true` in `infra/envs/dev/terraform.tfvars`, run `terraform apply`. Then update `queueURL` in `k8s/autoscaling/keda-scaledobject.yaml` and apply:
-  ```bash
-  kubectl apply -f k8s/autoscaling/keda-scaledobject.yaml
-  ```
-* **CPU HPA (Baseline comparison):** Apply `k8s/autoscaling/hpa-baseline.yaml` without KEDA ScaledObject.
+Import `observability\grafana\dashboards\worker-monitoring.json`. The dashboard
+shows worker counters/gauges, SQS queue depth, Kubernetes replicas, processing
+latency, and Pod readiness. T0–T6 event latency is available in the collected
+experiment evidence.
 
-> [!WARNING]
-> Do not let KEDA and CPU HPA manage `worker-service` simultaneously.
+![Multi-AZ EKS Event-Driven Autoscaling Master Dashboard](docs/images/grafana-master-dashboard.jpg)
 
----
+### 8. Smoke test and load test
 
-### Step 9: Clean Up & Teardown
-
-To avoid AWS `DependencyViolation` errors during VPC deletion, always clean up Kubernetes Ingress (ALB) and storage before running `terraform destroy`:
-
-#### Git Bash
-
-```bash
-# 1. Delete Ingress to remove ALB
-kubectl delete ingress api-ingress -n app
-
-# 2. Delete monitoring resources and PVCs
-helm uninstall monitoring -n observability
-kubectl delete pvc --all -n observability
-kubectl delete pvc --all -n app
-kubectl delete -k k8s
-
-# 3. Destroy Terraform infrastructure
-cd infra/envs/dev
-terraform destroy -auto-approve
-cd ../../../
-```
-
-#### PowerShell
+Get the ALB hostname and run a small test before the staged workload:
 
 ```powershell
-# 1. Delete Ingress to remove ALB
-kubectl delete ingress api-ingress -n app
-
-# 2. Delete monitoring resources and PVCs
-helm uninstall monitoring -n observability
-kubectl delete pvc --all -n observability
-kubectl delete pvc --all -n app
-kubectl delete -k k8s
-
-# 3. Destroy Terraform infrastructure
-cd infra\envs\dev
-terraform destroy -auto-approve
-cd ..\..\..
+kubectl get ingress api-ingress -n app
+k6 run -e API_URL=http://<ALB-HOSTNAME> scripts\load-test\k6-workload.js
 ```
+
+Watch API and worker logs, worker metrics, the selected autoscaler, and SQS
+queue depth in CloudWatch. The k6 script sends jobs to the configured AWS
+queue; use a development environment, not production.
+
+### 9. Tear down and control costs
+
+Delete Kubernetes Ingress resources and wait for their ALBs to be removed
+before destroying the cluster. Review Terraform's destroy plan carefully.
+The bootstrap state bucket and lock table are separate resources and should
+normally be retained.
 
 ## Local development
 
@@ -470,4 +297,4 @@ Invoke-RestMethod -Method Post -Uri http://localhost:3000/jobs `
 ## Documentation
 
 See each top-level directory README for subsystem-specific configuration and
-the [`docs/`](docs/README.md) index for experiment and fault-tolerance notes
+the [`docs/`](docs/README.md) index for experiment and fault-tolerance notes.
