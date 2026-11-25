@@ -1,5 +1,7 @@
 # Architecture Diagram
 
+![Multi-AZ Event-Driven Autoscaling Architecture](images/system-architecture.jpg)
+
 ```text
 Internet
    ↓

@@ -28,11 +28,9 @@ terraform {
   # Hoặc chạy: terraform init -backend-config=backend.hcl
   # ---------------------------------------------------------------------------
   backend "s3" {
-    # Các giá trị này được điền sau khi chạy bootstrap
-    bucket = "multiaz-autoscaling-tfstate-867703356304"
-    key    = "envs/dev/terraform.tfstate"
-    region = "ap-southeast-1"
-    # dynamodb_table = "multiaz-autoscaling-tflock"
+    bucket  = "multiaz-autoscaling-tfstate-867703356304"
+    key     = "envs/dev/terraform.tfstate"
+    region  = "ap-southeast-1"
     encrypt = true
   }
 }

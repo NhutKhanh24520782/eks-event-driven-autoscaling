@@ -13,7 +13,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Phiên bản Kubernetes của EKS cluster (khuyến nghị dùng bản mới nhất được AWS hỗ trợ)"
   type        = string
-  default     = "1.30"
+  default     = "1.32"
 }
 
 variable "azs" {

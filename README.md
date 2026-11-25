@@ -12,6 +12,8 @@ comparison. Prometheus, Grafana, and Loki provide metrics and log collection.
 
 ## Architecture
 
+![System Architecture](docs/images/system-architecture.jpg)
+
 ```text
 Client
   |
@@ -31,6 +33,12 @@ Controller, EBS CSI driver, and an optional KEDA installation. Kubernetes
 workloads are spread across available zones where scheduling capacity permits.
 This project uses managed node groups; it does not configure Karpenter or
 cluster autoscaling.
+
+### EKS Autoscaling & Chaos Test Center (Frontend UI)
+
+The frontend (`apps/frontend`, exposed at the root `/` via ALB Ingress) provides an interactive telemetry dashboard and chaos test center. It displays real-time SQS backlog depth, active worker concurrency, processed/error counts, and offers one-click scenario triggers (KEDA scale-out burst, worker crash injection, poison pill DLQ routing, idempotency deduplication, latency surge, and graceful shutdown):
+
+![EKS Autoscaling & Chaos Test Center](docs/images/chaos-test-center.jpg)
 
 ## Repository map
 
@@ -220,6 +228,8 @@ Import `observability\grafana\dashboards\worker-monitoring.json`. The dashboard
 shows worker counters/gauges, SQS queue depth, Kubernetes replicas, processing
 latency, and Pod readiness. T0–T6 event latency is available in the collected
 experiment evidence.
+
+![Multi-AZ EKS Event-Driven Autoscaling Master Dashboard](docs/images/grafana-master-dashboard.jpg)
 
 ### 8. Smoke test and load test
 
